@@ -185,7 +185,7 @@ export async function generateInstagramCaption({ quoteText, sourceText = '', pre
 const CHAT_SYSTEM_PROMPT = `You are a helpful assistant answering questions about a sermon/service that has just ended.
 You are given the full transcript, a structured summary, and the conversation so far. Answer the user's question using only information from the transcript/summary.
 If the transcript doesn't contain the answer, say so plainly rather than guessing or inventing details.
-Keep answers conversational and concise.`;
+Keep answers conversational and concise. Plain text only, aside from two exceptions: you may wrap a genuinely key word or phrase in **bold** markdown (sparingly, never HTML), and if you're walking through multiple distinct points, put each on its own line rather than run them together in one paragraph.`;
 
 export async function answerSessionQuestion({ fullText, summary, history = [], question }) {
   if (!env.openrouterApiKey) {

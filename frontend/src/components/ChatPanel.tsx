@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { postChatMessage } from '@/lib/api';
 import type { ChatMessage } from '@/lib/types';
+import { renderInlineMarkdown } from '@/lib/inlineMarkdown';
 
 export function ChatPanel({ sessionId, initialMessages }: { sessionId: string; initialMessages: ChatMessage[] }) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
@@ -47,13 +48,13 @@ export function ChatPanel({ sessionId, initialMessages }: { sessionId: string; i
         {messages.map((m) => (
           <div
             key={m._id}
-            className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+            className={`max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ${
               m.role === 'user'
                 ? 'ml-auto bg-neutral-900 text-white'
                 : 'bg-neutral-100 text-neutral-800'
             }`}
           >
-            {m.text}
+            {m.role === 'user' ? m.text : renderInlineMarkdown(m.text)}
           </div>
         ))}
         {sending && <div className="max-w-[85%] rounded-lg bg-neutral-100 px-3 py-2 text-sm text-neutral-400">Thinking...</div>}

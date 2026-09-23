@@ -3,7 +3,7 @@ import { Quote } from '../models/Quote.model.js';
 import { Insight } from '../models/Insight.model.js';
 import { createDeepgramLiveConnection } from '../services/deepgram.service.js';
 import { startAnalysis, stopAnalysis } from '../services/analysis.service.js';
-import { startRecording, appendAudioChunk, finishRecording } from '../services/audioRecording.service.js';
+import { startRecording, appendAudioChunk, pauseRecording } from '../services/audioRecording.service.js';
 
 export function registerStreamHandlers(io) {
   io.on('connection', (socket) => {
@@ -141,8 +141,8 @@ export function registerStreamHandlers(io) {
       }
       if (currentSessionId) {
         stopAnalysis(currentSessionId);
-        finishRecording(currentSessionId).catch((err) => {
-          console.error('[stream] failed to finish recording', err);
+        pauseRecording(currentSessionId).catch((err) => {
+          console.error('[stream] failed to pause recording', err);
         });
         currentSessionId = null;
       }

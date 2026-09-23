@@ -5,6 +5,7 @@ import { Insight } from '../models/Insight.model.js';
 import { ChatMessage } from '../models/ChatMessage.model.js';
 import { generateSummary, generateCarousel, answerSessionQuestion } from '../services/openrouter.service.js';
 import { getAnalysis, stopAnalysis } from '../services/analysis.service.js';
+import { finalizeRecording } from '../services/audioRecording.service.js';
 
 export async function createSessionForService(req, res) {
   const { id: serviceId } = req.params;
@@ -61,6 +62,9 @@ export async function endSession(req, res) {
       if (carousel?.length) session.carousel = carousel;
     }
   }
+
+  const audioUrl = await finalizeRecording(id);
+  if (audioUrl) session.audioUrl = audioUrl;
 
   await session.save();
   stopAnalysis(id);

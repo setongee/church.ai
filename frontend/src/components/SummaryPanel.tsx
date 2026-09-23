@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { SessionSummary } from '@/lib/types';
+import { renderInlineMarkdown } from '@/lib/inlineMarkdown';
 
 function List({ title, items }: { title: string; items: string[] }) {
   if (!items || items.length === 0) return null;
@@ -10,7 +11,7 @@ function List({ title, items }: { title: string; items: string[] }) {
       <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">{title}</h3>
       <ul className="mt-1.5 flex flex-col gap-1 text-sm text-neutral-800">
         {items.map((item, i) => (
-          <li key={i}>{item}</li>
+          <li key={i}>{renderInlineMarkdown(item)}</li>
         ))}
       </ul>
     </div>
@@ -85,7 +86,7 @@ export function SummaryPanel({
           </button>
         </div>
       </div>
-      <p className="mt-1 text-sm text-neutral-700">{summary.overview}</p>
+      <p className="mt-1 text-sm text-neutral-700">{renderInlineMarkdown(summary.overview)}</p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <List title="Topics" items={summary.topics} />
         <List title="Key points" items={summary.keyPoints} />

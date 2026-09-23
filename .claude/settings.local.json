@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/setonjiavoseh/**)",
+      "Bash(command -v fnm)",
+      "Bash(command -v n)",
+      "Bash(brew list *)",
+      "Bash(command -v brew)",
+      "Bash(command -v asdf)",
+      "Bash(command -v volta)",
+      "Read(//usr/local/bin/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(brew --version)",
+      "Bash(pkgutil --pkgs)",
+      "Bash(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh)",
+      "Bash(bash)",
+      "Bash(touch ~/.zshrc *)",
+      "Bash(zsh -i -c 'node -v && which node')"
+    ],
+    "additionalDirectories": [
+      "/Users/setonjiavoseh"
+    ]
+  }
+}
