@@ -7,6 +7,8 @@ import { Modal } from "@/components/present/ui";
 import { useCached } from "@/lib/queries";
 import { RosterCalendar } from "@/components/team/RosterCalendar";
 import { MemberTable } from "@/components/team/MemberTable";
+import { RolesPanel } from "@/components/team/RolesPanel";
+import { listRoles, type AppRole } from "@/lib/roles";
 import { createUser, listUsers, type TeamUser } from "@/lib/team";
 
 const field = "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-neutral-900";
@@ -20,10 +22,11 @@ export default function TeamPage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [appRoleId, setAppRoleId] = useState("");
+  const { data: roles } = useCached<AppRole[]>(["roles"], listRoles, { enabled: Boolean(me?.isAdmin) });
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false); // the add-member modal
-  const [tab, setTab] = useState<"members" | "roster">("members");
+  const [tab, setTab] = useState<"members" | "roles" | "roster">("members");
 
   // Cached: the member list shows instantly and re-checks in the background (and after any change).
   const { data: usersData, reload, error: usersError } = useCached<TeamUser[]>(["users"], listUsers, { enabled: Boolean(me?.isAdmin) });
@@ -46,7 +49,7 @@ export default function TeamPage() {
     setBusy(true);
     let ok = false;
     await run(async () => {
-      const r = await createUser({ name, email, phone: phone || undefined, password: password || undefined, isAdmin });
+      const r = await createUser({ name, email, phone: phone || undefined, password: password || undefined, appRoleId });
       if (r.password) setSecret({ name: r.user.name, password: r.password });
       const sent = [r.delivery.email.ok && "email", r.delivery.sms.ok && "text"].filter(Boolean).join(" and ");
       setNotice(sent ? `${r.user.name} was sent their login details by ${sent}.` : `${r.user.name} was added, but their login details couldn’t be sent (${r.delivery.email.error || r.delivery.sms.error}). Pass the password on yourself.`);
@@ -54,7 +57,7 @@ export default function TeamPage() {
       setEmail("");
       setPassword("");
       setPhone("");
-      setIsAdmin(false);
+      setAppRoleId("");
       ok = true;
     });
     setBusy(false);
@@ -84,7 +87,8 @@ export default function TeamPage() {
         {(
           [
             ["members", "Team members"],
-            ["roster", "Team roster"],
+            ["roles", "Roles"],
+            ["roster", "Service assignments"],
           ] as const
         ).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${tab === k ? "bg-white text-orange-600 shadow-sm" : "text-neutral-500 hover:text-neutral-800"}`}>
@@ -114,9 +118,11 @@ export default function TeamPage() {
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required className={field} />
             <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone for SMS (optional) — 0803…" className={field} />
             <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password (leave empty to generate one)" minLength={8} className={field} />
-            <label className="flex items-center gap-2 text-sm text-neutral-700">
-              <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} /> Admin (can manage the team and rosters)
-            </label>
+            <select value={appRoleId} onChange={(e) => setAppRoleId(e.target.value)} className={field} aria-label="Role">
+              <option value="">No role</option>
+              <option value="admin">Admin</option>
+              {(roles ?? []).map((r) => <option key={r._id} value={r._id}>{r.name}</option>)}
+            </select>
             {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
             <div className="flex justify-end gap-2 pt-1">
               <button type="button" onClick={() => setAdding(false)} disabled={busy} className="rounded-xl border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
@@ -131,6 +137,8 @@ export default function TeamPage() {
       )}
 
       {tab === "members" && <MemberTable users={users} me={me?._id} run={run} onSecret={setSecret} />}
+
+      {tab === "roles" && <RolesPanel />}
 
       {tab === "roster" && (
         <div className="mt-6">

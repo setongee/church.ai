@@ -13,6 +13,9 @@ export function shapeCall(c) {
     ? {
         id: c.id,
         roomId: c.roomId,
+        title: c.title || '',
+        // Set when the call is only for some people in the room (their ids); absent when it is for everyone.
+        invited: c.invited ?? undefined,
         host: c.host,
         startedAt: c.startedAt,
         participants: [...c.participants.values()].map((p) => ({ id: p.userId, name: p.name, muted: p.muted, video: p.video })),
@@ -25,17 +28,27 @@ export async function roomMemberIds(roomId) {
 }
 
 // `host` / `startedBy` are { id, name }. Returns the call, or null when one is already live in that room.
-export function startCall(roomId, roomName, host, startedBy) {
+export function startCall(roomId, roomName, host, startedBy, title = '', invited = null) {
   const key = String(roomId);
   if (calls.has(key)) return null;
-  const call = { id: `${key}-${Date.now().toString(36)}`, roomId: key, roomName, host, startedBy, startedAt: new Date().toISOString(), participants: new Map(), timer: null };
+  const call = { id: `${key}-${Date.now().toString(36)}`, roomId: key, roomName, host, startedBy, title: String(title || '').trim().slice(0, 80), invited: invited?.length ? invited.map(String) : null, startedAt: new Date().toISOString(), participants: new Map(), timer: null, lastPingAt: 0 };
   calls.set(key, call);
   return call;
 }
 
+// A call is for everyone in the room, or only for the people it was started with (and its host).
+export const canSeeCall = (call, userId) => !call.invited || call.invited.includes(String(userId)) || call.host.id === String(userId) || call.startedBy?.id === String(userId);
+
+// Who is told about a call, and may join it.
+export async function callAudience(call) {
+  const members = await roomMemberIds(call.roomId);
+  return call.invited ? members.filter((id) => canSeeCall(call, id)) : members;
+}
+
 export async function broadcastCall(roomId, event = 'call:update') {
   const c = getCall(roomId);
-  emitToUsers(await roomMemberIds(roomId), event, { roomId: String(roomId), call: shapeCall(c) });
+  if (!c) return;
+  emitToUsers(await callAudience(c), event, { roomId: String(roomId), call: shapeCall(c) });
 }
 
 export async function endCall(roomId, reason = 'ended') {
@@ -44,19 +57,19 @@ export async function endCall(roomId, reason = 'ended') {
   if (!c) return null;
   if (c.timer) clearTimeout(c.timer);
   calls.delete(key);
-  emitToUsers(await roomMemberIds(key), 'call:ended', { roomId: key, callId: c.id, reason });
+  emitToUsers(await callAudience(c), 'call:ended', { roomId: key, callId: c.id, reason });
   return c;
 }
 
 // When the last person leaves, the call ends after a short grace period (cancelled if someone joins again).
-export function scheduleEmptyEnd(roomId) {
+export function scheduleEmptyEnd(roomId, graceMs = EMPTY_GRACE_MS) {
   const c = getCall(roomId);
   if (!c || c.participants.size) return;
   if (c.timer) clearTimeout(c.timer);
   c.timer = setTimeout(() => {
     const cur = getCall(roomId);
     if (cur && !cur.participants.size) void endCall(roomId, 'empty');
-  }, EMPTY_GRACE_MS);
+  }, graceMs);
 }
 
 // ICE servers for the browsers: public STUN always; a TURN relay too when TURN_URLS (comma-separated),

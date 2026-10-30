@@ -18,7 +18,7 @@ const nice = (ymd) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-GB', {
 const TASK_HOURS = [8, 20]; // reminders about tasks are sent between 8am and 8pm
 const CHAT_HOURS = [7, 21];
 const TAGGED_AFTER_MIN = 10; // someone tagged you and you haven't looked
-const ANY_AFTER_MIN = 30; // unread messages have sat for a while
+const ANY_AFTER_MIN = 10; // unread messages have sat for this long (checked every few minutes, so the email lands 10-15 min after)
 const CHAT_EMAIL_EVERY_H = 2; // at most one chat reminder email per person every couple of hours
 let forced = false; // tests run the jobs at any hour
 const inside = ([a, b]) => forced || (localHour() >= a && localHour() < b);
@@ -115,7 +115,7 @@ export function startReminders() {
     taskReminders().catch((e) => console.error('[reminders] tasks', e.message));
     chatReminders().catch((e) => console.error('[reminders] chat', e.message));
   };
-  setTimeout(run, 60_000); // soon after start-up, then every 15 minutes
-  timer = setInterval(run, 15 * 60_000);
+  setTimeout(run, 60_000); // soon after start-up, then every 5 minutes
+  timer = setInterval(run, 5 * 60_000);
   timer.unref?.();
 }

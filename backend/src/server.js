@@ -24,15 +24,19 @@ import notificationRoutes from "./routes/notification.routes.js";
 import pushRoutes from "./routes/push.routes.js";
 import boardRoutes from "./routes/board.routes.js";
 import submissionRoutes from "./routes/submission.routes.js";
+import roleRoutes from "./routes/role.routes.js";
+import { seedRoles } from "./models/Role.model.js";
 import { dashboard } from "./controllers/dashboard.controller.js";
 import { asyncHandler } from "./utils/asyncHandler.js";
 import contentRoutes from "./routes/content.routes.js";
 import { registerCallHandlers } from "./sockets/callHandler.js";
 import { registerListenHandlers } from "./sockets/listenHandler.js";
+import { registerChatHandlers } from "./sockets/chatHandler.js";
+import { startCallScheduler } from "./services/callScheduler.service.js";
 import activityRoutes from "./routes/activity.routes.js";
 import postUploadRoutes from "./routes/postUpload.routes.js";
 import { activityLogger } from "./middlewares/activityLogger.js";
-import { requireAuth, requireRole, readAnyWriteRole, userForToken } from "./middlewares/auth.js";
+import { requireAuth, requireAdmin, requireRole, readAnyWriteRole, userForToken } from "./middlewares/auth.js";
 import { effectiveRoles } from "./services/access.service.js";
 import { setIo, userRoom, STAFF_ROOM, AUTHED_ROOM } from "./services/realtime.service.js";
 import { startContentScheduler } from "./services/contentScheduler.service.js";
@@ -76,6 +80,8 @@ app.use("/api", requireAuth);
 // What each person does is recorded for the live activity page.
 app.use("/api", activityLogger);
 app.use("/api/users", userRoutes);
+// App-level roles (named sets of access) are managed by admins.
+app.use("/api/roles", requireAdmin, roleRoutes);
 // Team chat is for everyone signed in; the live activity feed is for admins and service managers.
 app.use("/api/chat", chatRoutes);
 // Everyone signed in has their own notifications.
@@ -201,6 +207,7 @@ registerStreamHandlers(io);
 registerPresentHandlers(io);
 registerCallHandlers(io);
 registerListenHandlers(io);
+registerChatHandlers(io);
 
 async function start() {
   await connectDb();
@@ -208,7 +215,9 @@ async function start() {
   await failInterruptedMerges();
   startContentScheduler();
   startReminders();
+  startCallScheduler();
   await endLegacySessions();
+  await seedRoles();
   httpServer.listen(env.port, () => {
     console.log(`[server] listening on http://localhost:${env.port}`);
   });

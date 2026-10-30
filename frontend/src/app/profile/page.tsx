@@ -35,8 +35,8 @@ export default function ProfilePage() {
         </div>
         <div className="mt-4 flex flex-wrap gap-1.5">
           {user.isAdmin && <span className="rounded-full bg-neutral-900 px-2.5 py-1 text-xs font-semibold text-white">Admin</span>}
-          {user.roles.map((r) => <span key={r} className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">{roleLabel(r)}</span>)}
-          {!user.isAdmin && user.roles.length === 0 && <span className="text-sm text-neutral-400">No role yet — roles come from the services you’re rostered on.</span>}
+          {!user.isAdmin && user.appRole && <span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">{user.appRole.name}</span>}
+          {!user.isAdmin && !user.appRole && <span className="text-sm text-neutral-400">No role yet. An admin can give you one; your service assignments are listed below.</span>}
         </div>
         <p className="mt-4 text-xs text-neutral-400">To change your name, email or phone, ask an admin.</p>
       </section>

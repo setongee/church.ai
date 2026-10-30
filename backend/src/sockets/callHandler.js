@@ -1,5 +1,5 @@
 import { RoomMember } from '../models/TeamRoom.model.js';
-import { broadcastCall, endCall, getCall, iceServers, scheduleEmptyEnd, shapeCall } from '../services/call.service.js';
+import { broadcastCall, canSeeCall, endCall, getCall, iceServers, scheduleEmptyEnd, shapeCall } from '../services/call.service.js';
 
 // Signalling for group calls. The audio/video itself flows browser-to-browser; here we only keep track of who is in
 // the call and pass their connection messages (offer / answer / ICE candidates) to each other.
@@ -38,6 +38,7 @@ export function registerCallHandlers(io) {
         if (!(await RoomMember.exists({ room: roomId, user: u.id }))) return ack({ ok: false, error: 'Join this room first.' });
         const call = getCall(roomId);
         if (!call) return ack({ ok: false, error: 'That call has ended.' });
+        if (!canSeeCall(call, u.id)) return ack({ ok: false, error: 'This call is for the people it was started with.' });
         if (call.timer) {
           clearTimeout(call.timer);
           call.timer = null;

@@ -5,6 +5,7 @@ import { AuthProvider } from "@/components/AuthProvider";
 import { QueryProvider } from "@/components/QueryProvider";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { PwaRegister } from "@/components/PwaRegister";
+import { UpdatePrompt } from "@/components/UpdatePrompt";
 import "./globals.css";
 
 const googleSans = Google_Sans({
@@ -60,6 +61,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </QueryProvider>
         <InstallPrompt />
         <PwaRegister />
+        <UpdatePrompt />
       </body>
     </html>
   );

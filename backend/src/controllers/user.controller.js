@@ -1,5 +1,7 @@
 import { User, ROLES } from '../models/User.model.js';
 import { Service } from '../models/Service.model.js';
+import { Role } from '../models/Role.model.js';
+import mongoose from 'mongoose';
 import { Roster } from '../models/Roster.model.js';
 import { hashPassword, generatePassword } from '../services/password.service.js';
 import { disconnectUser } from '../services/realtime.service.js';
@@ -14,7 +16,7 @@ import { env } from '../config/env.js';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const loginUrl = () => `${env.frontendOrigin.replace(/\/$/, '')}/login`;
 
-const adminView = (u, roles = []) => ({ ...publicUser(u, roles), defaultRole: u.defaultRole || '', signedIn: sessionIsActive(u), lastSeenAt: u.lastSeenAt, sessionDevice: sessionIsActive(u) ? u.sessionDevice : '', createdAt: u.createdAt });
+const adminView = (u, roles = []) => ({ ...publicUser(u, roles), signedIn: sessionIsActive(u), lastSeenAt: u.lastSeenAt, sessionDevice: sessionIsActive(u) ? u.sessionDevice : '', createdAt: u.createdAt });
 
 async function signOut(user) {
   await User.updateOne({ _id: user._id }, { sessionTokenHash: null, sessionStartedAt: null, lastSeenAt: null, sessionDevice: '' });
@@ -24,7 +26,7 @@ async function signOut(user) {
 const otherAdmins = (id) => User.countDocuments({ _id: { $ne: id }, isAdmin: true, active: true });
 
 export async function listUsers(req, res) {
-  const users = await User.find().sort({ name: 1 });
+  const users = await User.find().sort({ name: 1 }).populate('appRole', 'name');
   const roles = await Promise.all(users.map((u) => rolesFor(u)));
   res.json(users.map((u, i) => adminView(u, roles[i])));
 }
@@ -51,14 +53,37 @@ async function sendCredentials(user, password) {
   return { email, sms };
 }
 
+// Sets a person's app-level role from what the admin picked: 'admin', a role id, or '' for none.
+// Returns a message if it can't be done.
+async function applyRole(user, value, self) {
+  if (value === undefined) return null;
+  if (value === 'admin') {
+    user.isAdmin = true;
+    user.appRole = null;
+    return null;
+  }
+  if (user.isAdmin && (self || (await otherAdmins(user._id)) === 0)) return 'There has to be at least one admin.';
+  if (value) {
+    if (!mongoose.isValidObjectId(value) || !(await Role.exists({ _id: value }))) return 'That role no longer exists.';
+    user.appRole = value;
+  } else user.appRole = null;
+  user.isAdmin = false;
+  clearAccessCache();
+  return null;
+}
+
 export async function createUser(req, res) {
-  const { name, email, phone, password, isAdmin } = req.body || {};
+  const { name, email, phone, password, appRoleId } = req.body || {};
   if (!String(name || '').trim()) return res.status(400).json({ error: 'A name is required.' });
   if (!EMAIL_RE.test(String(email || '').trim())) return res.status(400).json({ error: 'A valid email is required.' });
   if (password && String(password).length < 8) return res.status(400).json({ error: 'Use a password of at least 8 characters.' });
   if (await User.exists({ email: String(email).trim().toLowerCase() })) return res.status(409).json({ error: 'Someone with that email is already on the team.' });
   const plain = password ? String(password) : generatePassword();
-  const user = await User.create({ name: name.trim(), email: email.trim(), phone: String(phone || '').trim().slice(0, 30), passwordHash: await hashPassword(plain), isAdmin: Boolean(isAdmin) });
+  const user = new User({ name: name.trim(), email: email.trim(), phone: String(phone || '').trim().slice(0, 30), passwordHash: await hashPassword(plain) });
+  const problem = await applyRole(user, appRoleId, false);
+  if (problem) return res.status(400).json({ error: problem });
+  await user.save();
+  await user.populate('appRole', 'name');
   await notify([user._id], { type: 'account', title: 'Welcome to FAFC Media Engine', body: 'Change your password from your dashboard, and check back here for your roster and team updates.', href: '/dashboard' });
   const delivery = await sendCredentials(user, plain);
   // A generated password is also shown to the admin once (in case the email/text didn't get through); only its hash is kept.
@@ -77,14 +102,9 @@ export async function updateUser(req, res) {
     user.email = b.email.trim();
   }
   if (typeof b.phone === 'string') user.phone = b.phone.trim().slice(0, 30);
-  if (typeof b.isAdmin === 'boolean' && b.isAdmin !== user.isAdmin) {
-    if (!b.isAdmin && (self || (await otherAdmins(user._id)) === 0)) return res.status(400).json({ error: 'There has to be at least one admin.' });
-    user.isAdmin = b.isAdmin;
-  }
-  if (b.defaultRole !== undefined) {
-    if (b.defaultRole && !ROLES.includes(b.defaultRole)) return res.status(400).json({ error: 'Unknown role.' });
-    user.defaultRole = b.defaultRole || '';
-    clearAccessCache();
+  if (b.appRoleId !== undefined) {
+    const problem = await applyRole(user, b.appRoleId, self);
+    if (problem) return res.status(400).json({ error: problem });
   }
   let signedOut = false;
   if (typeof b.active === 'boolean' && b.active !== user.active) {
@@ -103,8 +123,10 @@ export async function updateUser(req, res) {
     signedOut = true;
   }
   await user.save();
+  await user.populate('appRole', 'name');
+  clearAccessCache();
   if (signedOut && !self) await signOut(user);
-  res.json({ user: adminView(user), password });
+  res.json({ user: adminView(user, await rolesFor(user)), password });
 }
 
 // An admin freeing up an account that is stuck signed in on a device nobody can reach.

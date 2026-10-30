@@ -125,13 +125,28 @@ export interface CallParticipant {
 export interface CallInfo {
   id: string;
   roomId: string;
+  title?: string;
+  invited?: string[]; // set when the call is only for the people it was started with
   host: { id: string; name: string };
   startedAt: string;
   participants: CallParticipant[];
 }
 export const liveCalls = () => req<CallInfo[]>("/api/chat/calls");
 export const roomCall = (roomId: string) => req<{ call: CallInfo | null; myRequest: { id: string; status: string } | null }>(`/api/chat/rooms/${roomId}/call`);
-export const startRoomCall = (roomId: string) => req<{ call: CallInfo }>(`/api/chat/rooms/${roomId}/call`, { method: "POST" });
+// `invited` leaves out the people who aren't asked; omit it to call everyone in the room.
+export const startRoomCall = (roomId: string, title = "", invited?: string[]) => req<{ call: CallInfo }>(`/api/chat/rooms/${roomId}/call`, { method: "POST", body: JSON.stringify({ title, invited }) });
+// An admin nudges the people in the room who haven't joined the call that is going on.
+export const pingCall = (roomId: string) => req<{ pinged: number }>(`/api/chat/rooms/${roomId}/call/ping`, { method: "POST" });
+export interface ScheduledCall {
+  id: string;
+  roomId: string;
+  title: string;
+  startAt: string;
+  invited?: string[];
+}
+export const listScheduledCalls = (roomId: string) => req<ScheduledCall[]>(`/api/chat/rooms/${roomId}/scheduled-calls`);
+export const scheduleCall = (roomId: string, input: { title: string; startAt: string; invited?: string[] }) => req<ScheduledCall>(`/api/chat/rooms/${roomId}/scheduled-calls`, { method: "POST", body: JSON.stringify(input) });
+export const cancelScheduledCall = (id: string) => req<{ ok: boolean }>(`/api/chat/scheduled-calls/${id}`, { method: "DELETE" });
 export const requestRoomCall = (roomId: string) => req<{ request: { id: string; status: string } }>(`/api/chat/rooms/${roomId}/call-requests`, { method: "POST" });
 export const approveCallRequest = (id: string) => req<{ ok: boolean; status: string; started?: boolean; already?: boolean }>(`/api/chat/call-requests/${id}/approve`, { method: "POST" });
 export const declineCallRequest = (id: string) => req<{ ok: boolean; status: string; already?: boolean }>(`/api/chat/call-requests/${id}/decline`, { method: "POST" });

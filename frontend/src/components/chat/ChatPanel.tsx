@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, Hash, LogOut, Pencil, Phone, PhoneCall, Send, Smile, SmilePlus, Sticker as StickerIcon, Trash2, Users, X } from "lucide-react";
+import { ArrowLeft, BellRing, CalendarClock, Check, Hash, Lock, LogOut, Pencil, Phone, PhoneCall, Send, Smile, SmilePlus, Sticker as StickerIcon, Trash2, Users, X } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
-import { REACTION_EMOJI, cancelCallRequest, deleteMessage, editMessage, joinRoom, leaveRoom, reactTo, requestRoomCall, roomCall, roomMembers, roomMessages, sendMessage, sendSticker, sendVoice, startRoomCall, voiceUrl, type ChatMessage, type Person, type Room } from "@/lib/chat";
+import { REACTION_EMOJI, cancelCallRequest, cancelScheduledCall, deleteMessage, editMessage, joinRoom, leaveRoom, listScheduledCalls, pingCall, reactTo, requestRoomCall, scheduleCall, roomCall, roomMembers, roomMessages, sendMessage, sendSticker, sendVoice, startRoomCall, voiceUrl, type ChatMessage, type Person, type Room } from "@/lib/chat";
 import { flashElement, queryParam } from "@/lib/deeplink";
 import { rememberSticker } from "@/lib/stickers";
+import { getSocket } from "@/lib/socket";
 import { useChat } from "./ChatProvider";
+import { CallDialog } from "./CallDialog";
+import { useCached } from "@/lib/queries";
 import { useCall } from "./CallProvider";
 import { Sticker, StickerPicker } from "./Sticker";
 import { MicButton, VoicePlayer, VoiceRecorder } from "./VoiceNote";
@@ -44,6 +47,27 @@ function Body({ m, me }: { m: ChatMessage; me: string }) {
   );
 }
 
+// "Ada is typing…", "Ada and Ben are typing…", "Ada and 3 others are typing…". Space is kept for it so the page doesn't jump.
+function TypingLine({ typers }: { typers: { id: string; name: string; since: number }[] }) {
+  const sorted = [...typers].sort((a, b) => a.since - b.since);
+  const first = sorted[0]?.name.split(" ")[0];
+  const text = !sorted.length ? "" : sorted.length === 1 ? `${first} is typing` : sorted.length === 2 ? `${first} and ${sorted[1].name.split(" ")[0]} are typing` : `${first} and ${sorted.length - 1} others are typing`;
+  return (
+    <div className="mb-1.5 flex h-4 items-center gap-1.5 px-1 text-xs text-neutral-500" aria-live="polite">
+      {text && (
+        <>
+          <span className="flex items-end gap-0.5" aria-hidden>
+            {[0, 150, 300].map((d) => (
+              <span key={d} className="h-1.5 w-1.5 animate-bounce rounded-full bg-neutral-400" style={{ animationDelay: `${d}ms` }} />
+            ))}
+          </span>
+          <span className="truncate">{text}…</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 // The chat: a list of rooms (team room + one per service) and the conversation in the open one.
 export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) {
   const { user } = useAuth();
@@ -56,6 +80,9 @@ export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) 
   const [msgs, setMsgs] = useState<ChatMessage[]>([]);
   const [members, setMembers] = useState<Person[]>([]);
   const [text, setText] = useState("");
+  // Who else is typing in the open room: when they started, and when we last heard from them.
+  const [typers, setTypers] = useState<{ id: string; name: string; since: number; seen: number }[]>([]);
+  const lastTyping = useRef(0);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [picker, setPicker] = useState<string | null>(null); // message id with the reaction picker open
@@ -68,6 +95,8 @@ export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) 
   const [recording, setRecording] = useState(false);
   const [myReq, setMyReq] = useState<{ id: string; status: string } | null>(null); // my pending call request in this room
   const [callBusy, setCallBusy] = useState(false);
+  const [callDialog, setCallDialog] = useState(false); // the admin's start-now / schedule dialog
+  const [pingNote, setPingNote] = useState("");
   const [joinPrompt, setJoinPrompt] = useState<{ ended: boolean } | null>(null); // from a ?call= link
   const { calls, ready: callsReady, session, join: joinCallSession, setMinimized } = useCall();
   const deepDone = useRef("");
@@ -81,6 +110,7 @@ export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) 
   const live = room ? calls[room.id] : undefined; // a call going on in this room
   const inThisCall = Boolean(room && session?.roomId === room.id);
   const pendingReq = live ? null : myReq;
+  const { data: scheduled, reload: refreshScheduled } = useCached(["scheduled-calls", activeId], () => listScheduledCalls(activeId!), { enabled: Boolean(activeId && room?.joined), refetchInterval: 60_000 });
 
   // Load the open room.
   useEffect(() => {
@@ -164,8 +194,39 @@ export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) 
     return [...all, ...people].slice(0, 6);
   }, [at, members, user]);
 
+  // Typing indicator: tell the room when I'm typing (at most every 3 s), and show who else is.
+  const sendTyping = useCallback((roomId: string | null, typing: boolean) => {
+    if (!roomId) return;
+    getSocket().emit("chat:typing", { roomId, typing });
+    lastTyping.current = typing ? Date.now() : 0;
+  }, []);
+  useEffect(() => {
+    const socket = getSocket();
+    const onTyping = (e: { roomId: string; user: { id: string; name: string }; typing: boolean }) => {
+      if (e.roomId !== activeId || e.user.id === user?._id) return;
+      setTypers((cur) => {
+        const rest = cur.filter((t) => t.id !== e.user.id);
+        if (!e.typing) return rest;
+        const was = cur.find((t) => t.id === e.user.id);
+        return [...rest, { id: e.user.id, name: e.user.name, since: was?.since ?? Date.now(), seen: Date.now() }];
+      });
+    };
+    socket.on("chat:typing", onTyping);
+    // Someone who closed the tab or lost signal never says they stopped: forget them after a few seconds of silence.
+    const sweep = setInterval(() => setTypers((cur) => (cur.some((t) => Date.now() - t.seen > 6000) ? cur.filter((t) => Date.now() - t.seen <= 6000) : cur)), 1500);
+    return () => {
+      socket.off("chat:typing", onTyping);
+      clearInterval(sweep);
+      setTypers([]);
+      if (lastTyping.current) sendTyping(activeId, false); // leaving the room (or the page) with half a message
+    };
+  }, [activeId, user?._id, sendTyping]);
+
   function onChange(v: string, caret: number) {
     setText(v);
+    if (!v.trim()) {
+      if (lastTyping.current) sendTyping(activeId, false);
+    } else if (Date.now() - lastTyping.current > 3000) sendTyping(activeId, true);
     const m = /(?:^|\s)@([\p{L}\p{N} ]{0,24})$/u.exec(v.slice(0, caret));
     // A space is allowed in the query (names have them) but not two in a row or a trailing-space-only query.
     setAt(m && !/\s{2}/.test(m[1]) ? { query: m[1].trimStart() } : null);
@@ -231,12 +292,13 @@ export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) 
       setMsgs((cur) => (cur.some((x) => x.id === m.id) ? cur : [...cur, m]));
       setText("");
       setAt(null);
+      sendTyping(activeId, false);
       nearBottom.current = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t send that");
     }
     setSending(false);
-  }, [text, activeId, sending, tagsOf]);
+  }, [text, activeId, sending, tagsOf, sendTyping]);
 
   function onKeyDown(e: React.KeyboardEvent) {
     if (at && suggestions.length) {
@@ -296,16 +358,33 @@ export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) 
     if (err) setError(err);
     setCallBusy(false);
   }
-  async function startCall() {
+  async function startCall(title = "", invited?: string[]) {
     if (!room) return;
     setCallBusy(true);
     try {
-      await startRoomCall(room.id);
+      await startRoomCall(room.id, title, invited);
       await joinCall();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t start the call");
     }
     setCallBusy(false);
+  }
+  async function schedule(title: string, startAt: string, invited?: string[]) {
+    if (!room) return;
+    await scheduleCall(room.id, { title, startAt, invited });
+    await refreshScheduled();
+  }
+  // An admin nudging the people in the room who haven't joined.
+  async function ping() {
+    if (!room) return;
+    setPingNote("Pinging…");
+    try {
+      const { pinged } = await pingCall(room.id);
+      setPingNote(pinged ? `Pinged ${pinged} ${pinged === 1 ? "person" : "people"}` : "Everyone is already on the call");
+    } catch (e) {
+      setPingNote(e instanceof Error ? e.message : "Couldn’t ping");
+    }
+    setTimeout(() => setPingNote(""), 6000);
   }
   async function askForCall() {
     if (!room) return;
@@ -380,7 +459,7 @@ export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) 
                 <p className="text-xs text-neutral-500">{members.length || room.members} {(members.length || room.members) === 1 ? "member" : "members"} · type @ to tag someone, @all for everyone</p>
               </div>
               {!live && !inThisCall && (user?.isAdmin ? (
-                <button onClick={() => void startCall()} disabled={callBusy} className="inline-flex items-center gap-1.5 rounded-lg border border-[#16a34a] px-3 py-1.5 text-xs font-semibold text-[#16a34a] hover:bg-[#16a34a] hover:text-[#ffffff] disabled:opacity-50">
+                <button onClick={() => setCallDialog(true)} disabled={callBusy} className="inline-flex items-center gap-1.5 rounded-lg border border-[#16a34a] px-3 py-1.5 text-xs font-semibold text-[#16a34a] hover:bg-[#16a34a] hover:text-[#ffffff] disabled:opacity-50">
                   <Phone size={14} /> Start call
                 </button>
               ) : pendingReq ? (
@@ -415,6 +494,31 @@ export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) 
               )}
             </header>
 
+            {(scheduled ?? []).length > 0 && (
+              <ul className="divide-y divide-neutral-100 border-b border-neutral-100 bg-neutral-50">
+                {(scheduled ?? []).map((c) => (
+                  <li key={c.id} className="flex items-center gap-2.5 px-3 py-2 text-xs text-neutral-600 sm:px-5">
+                    <CalendarClock size={14} className="shrink-0 text-orange-600" />
+                    <span className="min-w-0 flex-1 truncate">
+                      <b className="text-neutral-900">{c.title || "Group call"}</b>{c.invited ? ` · private (${c.invited.length + 1} people)` : ""} · {new Date(c.startAt).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })} · starts by itself
+                    </span>
+                    {user?.isAdmin && (
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm("Cancel this scheduled call? Everyone in the room is told.")) return;
+                          await cancelScheduledCall(c.id).catch((e) => setError(e instanceof Error ? e.message : "Couldn’t cancel"));
+                          await refreshScheduled();
+                        }}
+                        className="shrink-0 font-semibold text-neutral-500 underline hover:text-red-600"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
             {live && (
               <div className="flex items-center gap-3 bg-[#16a34a] px-3 py-2.5 text-[#ffffff] sm:px-5" role="status">
                 <span className="relative flex h-2.5 w-2.5 shrink-0">
@@ -422,9 +526,15 @@ export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) 
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#ffffff]" />
                 </span>
                 <p className="min-w-0 flex-1 truncate text-sm">
-                  <b>Call in progress</b>
+                  <b>{live.title || "Call in progress"}</b>
+                  {live.invited && <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[rgba(255,255,255,0.2)] px-2 py-0.5 text-[11px] font-semibold"><Lock size={11} /> Private · {live.invited.length + 1} people</span>}
                   <span className="opacity-90"> · {live.participants.length ? `${live.participants.slice(0, 3).map((p) => p.name).join(", ")}${live.participants.length > 3 ? ` +${live.participants.length - 3}` : ""}` : `${live.host.name} is starting it`}</span>
                 </p>
+                {user?.isAdmin && (
+                  <button onClick={() => void ping()} disabled={pingNote === "Pinging…"} title="Ping the people in this room who haven’t joined" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[rgba(255,255,255,0.6)] px-3 py-1.5 text-xs font-semibold text-[#ffffff] hover:bg-[rgba(255,255,255,0.15)] disabled:opacity-50">
+                    <BellRing size={14} /> {pingNote || "Ping others"}
+                  </button>
+                )}
                 {inThisCall ? (
                   <button onClick={() => setMinimized(false)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#ffffff] px-3.5 py-1.5 text-xs font-semibold text-[#166534] hover:bg-[#dcfce7]">
                     <PhoneCall size={14} /> Open call
@@ -565,6 +675,7 @@ export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) 
             </div>
 
             <footer className="relative border-t border-neutral-100 p-3">
+              <TypingLine typers={typers} />
               {error && <p className="mb-2 rounded-lg bg-red-50 px-3 py-1.5 text-xs text-red-700">{error}</p>}
               {at && suggestions.length > 0 && (
                 <ul className="absolute bottom-full left-3 z-20 mb-1 w-64 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-xl">
@@ -621,6 +732,8 @@ export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) 
           </>
         )}
       </section>
+
+      {callDialog && room && <CallDialog roomName={room.kind === "general" ? "the Team room" : room.name} members={members} meId={user?._id} onStart={startCall} onSchedule={schedule} onClose={() => setCallDialog(false)} />}
 
       {joinPrompt && room && (
         <div className="fixed inset-0 z-[90] grid place-items-center bg-[rgba(0,0,0,0.5)] p-4" onMouseDown={() => setJoinPrompt(null)}>

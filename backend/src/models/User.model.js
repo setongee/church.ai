@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
-// Roster roles. What a person can open is decided by the roles they hold on current rosters (see access.service.js).
+// The kinds of access (also the jobs a person can be assigned on a service). What a person can open is the access from their
+// app role plus the jobs they're assigned on current services (see access.service.js).
 export const ROLES = ['presenter', 'design', 'audio', 'manager', 'social'];
 
 // A team member. `isAdmin` lets them manage the team, services and rosters; everyone else gets access from
@@ -13,8 +14,8 @@ const userSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true },
     phone: { type: String, default: '', trim: true },
     isAdmin: { type: Boolean, default: false },
-    // A standing role the admin gives directly (on top of whatever the person is rostered for). '' = none.
-    defaultRole: { type: String, enum: ['', ...ROLES], default: '' },
+    // The person's app-level role (see Role.model.js). Admins use `isAdmin` instead and have no role here.
+    appRole: { type: mongoose.Schema.Types.ObjectId, ref: 'Role', default: null },
     active: { type: Boolean, default: true },
     sessionTokenHash: { type: String, default: null, index: true },
     sessionStartedAt: { type: Date, default: null },

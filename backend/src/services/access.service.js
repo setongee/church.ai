@@ -1,4 +1,5 @@
 import { Roster } from '../models/Roster.model.js';
+import { Role } from '../models/Role.model.js';
 
 // A rostered job opens its pages from when the service is planned until a week after its date (so the
 // team can still finish edits and exports). A service with no date counts as current.
@@ -22,13 +23,27 @@ export async function assignmentsFor(userId, { onlyCurrent = false } = {}) {
 const cache = new Map();
 const TTL_MS = 20_000;
 
-export const clearAccessCache = () => cache.clear();
+const roleCache = new Map();
+export const clearAccessCache = () => {
+  cache.clear();
+  roleCache.clear();
+};
+
+// The access an app role gives.
+async function accessOf(roleId) {
+  if (!roleId) return [];
+  const key = String(roleId);
+  if (!roleCache.has(key)) roleCache.set(key, (await Role.findById(key).select('access').lean())?.access ?? []);
+  return roleCache.get(key);
+}
 
 export async function rolesFor(user) {
+  const roleId = String(user.appRole?._id ?? user.appRole ?? '');
   const hit = cache.get(String(user._id));
-  if (hit && hit.base === (user.defaultRole || '') && Date.now() - hit.at < TTL_MS) return hit.roles;
-  const roles = [...new Set([...(user.defaultRole ? [user.defaultRole] : []), ...(await assignmentsFor(user._id, { onlyCurrent: true })).map((a) => a.role)])];
-  cache.set(String(user._id), { at: Date.now(), base: user.defaultRole || '', roles });
+  if (hit && hit.base === roleId && Date.now() - hit.at < TTL_MS) return hit.roles;
+  const assigned = (await assignmentsFor(user._id, { onlyCurrent: true })).map((a) => a.role);
+  const roles = [...new Set([...(await accessOf(roleId)), ...assigned])];
+  cache.set(String(user._id), { at: Date.now(), base: roleId, roles });
   return roles;
 }
 

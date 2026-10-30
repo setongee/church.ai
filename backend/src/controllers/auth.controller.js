@@ -14,9 +14,13 @@ export const publicUser = (u, roles = []) => ({
   phone: u.phone,
   isAdmin: u.isAdmin,
   roles,
+  appRole: u.appRole?.name ? { _id: u.appRole._id, name: u.appRole.name } : null, // the app-level role (null for admins and people without one)
   active: u.active,
 });
-export const userView = async (u) => publicUser(u, await effectiveRoles(u));
+export const userView = async (u) => {
+  await u.populate('appRole', 'name');
+  return publicUser(u, await effectiveRoles(u));
+};
 
 // Slows down password guessing: 8 wrong tries per email+IP per 15 minutes.
 const fails = new Map();

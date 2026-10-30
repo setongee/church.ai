@@ -12,6 +12,15 @@ export const TEAM_ROLES: { id: TeamRole; label: string; hint: string }[] = [
   { id: "manager", label: "Service Manager", hint: "Services, Audio Lab & Studio" },
   { id: "social", label: "Social Media Manager", hint: "Posts, Studio & performance" },
 ];
+// What each kind of access opens. An app role is a named set of these, and an assignment gives one of them for a service.
+// (Present, Image Studio, the calendar and tasks to look at, and chat are open to everyone, so they aren't listed.)
+export const ACCESS_INFO: Record<Exclude<TeamRole, "presenter">, { label: string; opens: string }> = {
+  design: { label: "Design", opens: "Image Studio saved live, Presentation, Carousels, Reel Studio, Published posts, Analytics" },
+  social: { label: "Social media", opens: "Everything in Design, plus planning the content calendar, Upload & post, Quotes and Sessions" },
+  audio: { label: "Audio", opens: "Audio Lab" },
+  manager: { label: "Services", opens: "Services, Sessions, Quotes, Audio Lab, Activity, Analytics and the studio tools" },
+};
+
 export const roleLabel = (r: TeamRole) => TEAM_ROLES.find((t) => t.id === r)?.label ?? r;
 
 // Which pages each rostered job opens. Everyone gets the dashboard ("/"); admins get everything. A person's
@@ -42,7 +51,8 @@ export interface AuthUser {
   email: string;
   phone?: string;
   isAdmin: boolean;
-  roles: TeamRole[];
+  roles: TeamRole[]; // everything they can currently open: their role's access plus current service assignments
+  appRole?: { _id: string; name: string } | null; // their app-level role (admins have none; they can open everything)
   active: boolean;
 }
 

@@ -22,6 +22,7 @@ export interface Tile {
 export interface CallSession {
   roomId: string;
   roomName: string;
+  title: string;
   host: { id: string; name: string };
   startedAt: string;
   tiles: Tile[];
@@ -73,7 +74,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const peers = useRef(new Map<string, Peer>());
   const names = useRef(new Map<string, string>());
   const local = useRef<{ audio: MediaStreamTrack | null; video: MediaStreamTrack | null; camStream: MediaStream | null }>({ audio: null, video: null, camStream: null });
-  const meta = useRef<{ roomId: string; roomName: string; host: { id: string; name: string }; startedAt: string } | null>(null);
+  const meta = useRef<{ roomId: string; roomName: string; title: string; host: { id: string; name: string }; startedAt: string } | null>(null);
   const ice = useRef<RTCIceServer[]>([]);
   const speaking = useRef(new Set<string>());
   const analysers = useRef(new Map<string, { an: AnalyserNode; buf: Uint8Array<ArrayBuffer> }>());
@@ -304,7 +305,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       }
       ice.current = res.iceServers ?? [{ urls: "stun:stun.l.google.com:19302" }];
       names.current = new Map(res.call.participants.map((p) => [p.id, p.name]));
-      meta.current = { roomId, roomName, host: res.call.host, startedAt: res.call.startedAt };
+      meta.current = { roomId, roomName, title: res.call.title ?? "", host: res.call.host, startedAt: res.call.startedAt };
       if (audio) watch("me", audio);
 
       const onJoined = (d: { roomId: string; user: { id: string; name: string } }) => {

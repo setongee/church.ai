@@ -15,7 +15,6 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export interface TeamUser extends AuthUser {
-  defaultRole: TeamRole | "";
   signedIn: boolean;
   lastSeenAt: string | null;
   sessionDevice: string;
@@ -32,8 +31,8 @@ export interface Delivery {
 
 export const listUsers = () => req<TeamUser[]>("/api/users");
 export const listTeam = () => req<TeamMember[]>("/api/users/team");
-export const createUser = (input: { name: string; email: string; phone?: string; password?: string; isAdmin: boolean }) => req<{ user: TeamUser; password?: string; delivery: Delivery }>("/api/users", { method: "POST", body: JSON.stringify(input) });
-export const updateUser = (id: string, patch: Partial<Pick<TeamUser, "name" | "email" | "phone" | "isAdmin" | "active" | "defaultRole">> & { resetPassword?: boolean }) =>
+export const createUser = (input: { name: string; email: string; phone?: string; password?: string; appRoleId?: string }) => req<{ user: TeamUser; password?: string; delivery: Delivery }>("/api/users", { method: "POST", body: JSON.stringify(input) });
+export const updateUser = (id: string, patch: Partial<Pick<TeamUser, "name" | "email" | "phone" | "active">> & { appRoleId?: string; resetPassword?: boolean }) =>
   req<{ user: TeamUser; password?: string }>(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 export const signOutUser = (id: string) => req<{ ok: boolean }>(`/api/users/${id}/sign-out`, { method: "POST" });
 export const deleteUser = (id: string) => req<{ ok: boolean }>(`/api/users/${id}`, { method: "DELETE" });

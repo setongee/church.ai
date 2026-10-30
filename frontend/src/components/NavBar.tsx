@@ -11,7 +11,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { useAuth } from "./AuthProvider";
 import { useChat } from "./chat/ChatProvider";
 import { NotificationBell } from "./notify/NotificationBell";
-import { canOpen, roleLabel } from "@/lib/auth";
+import { canOpen } from "@/lib/auth";
 
 interface Item {
   href: string;
@@ -114,7 +114,7 @@ export function NavBar() {
   // The Present output is a clean projector screen - no chrome at all.
   if (pathname.startsWith("/design") || pathname.startsWith("/present/output") || pathname === "/login" || !user || kiosk) return null;
 
-  const subtitle = user.isAdmin ? "Admin" : user.roles.map(roleLabel).join(" · ") || "Team member";
+  const subtitle = user.isAdmin ? "Admin" : user.appRole?.name || "Team member";
   const entries = NAV.map((e) => (e.kind === "menu" ? { ...e, items: e.items.filter((i) => canOpen(user, i.path ?? i.href)) } : e)).filter((e) => e.kind === "link" ? canOpen(user, e.href) : e.items.length > 0);
 
   const doLogout = () => {

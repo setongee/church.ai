@@ -7,6 +7,7 @@ import { useCached } from "@/lib/queries";
 import { listServices } from "@/lib/api";
 import { listSprints, listTasks, updateTask, type Task } from "@/lib/board";
 import { roleLabel, TEAM_ROLES, type TeamRole } from "@/lib/auth";
+import { listRoles } from "@/lib/roles";
 import { assignMemberToRoster, deleteUser, memberRoster, signOutUser, updateUser, type TeamUser } from "@/lib/team";
 
 const field = "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-neutral-900";
@@ -59,7 +60,7 @@ export function MemberTable({ users, me, run, onSecret }: { users: TeamUser[]; m
         <table className="w-full min-w-[1100px] text-left text-sm">
           <thead>
             <tr className="border-b border-neutral-100 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-              {["Full name", "Email", "Phone", "Last signed in", "Status", "Roster", "Role", "Actions"].map((h, i) => (
+              {["Full name", "Email", "Phone", "Last signed in", "Status", "Assignments", "Role", "Actions"].map((h, i) => (
                 <th key={i} className="whitespace-nowrap px-4 py-3">{h}</th>
               ))}
             </tr>
@@ -67,7 +68,6 @@ export function MemberTable({ users, me, run, onSecret }: { users: TeamUser[]; m
           <tbody>
             {users.map((u) => {
               const self = u._id === me;
-              const roles = [...new Set([...(u.defaultRole ? [u.defaultRole] : []), ...u.roles])];
               return (
                 <tr key={u._id} className={`border-b border-neutral-50 last:border-0 ${u.active ? "" : "opacity-60"}`}>
                   <td className="whitespace-nowrap px-4 py-3">
@@ -89,7 +89,7 @@ export function MemberTable({ users, me, run, onSecret }: { users: TeamUser[]; m
                     <button onClick={() => pick("viewRoster", u)} className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs font-medium text-neutral-600 hover:border-orange-300 hover:text-orange-700"><CalendarDays size={13} /> View</button>
                   </td>
                   <td className="px-4 py-3">
-                    {u.isAdmin ? <span className="text-xs text-neutral-400">Everything</span> : roles.length ? <span className="flex flex-wrap gap-1">{roles.map((r) => <span key={r} className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700">{roleLabel(r)}</span>)}</span> : <span className="text-xs text-neutral-400">None</span>}
+                    {u.isAdmin ? <span className="rounded-full bg-neutral-900 px-2.5 py-0.5 text-[11px] font-bold text-white">Admin</span> : u.appRole ? <span className="rounded-full bg-orange-50 px-2.5 py-0.5 text-[11px] font-semibold text-orange-700">{u.appRole.name}</span> : <span className="text-xs text-neutral-400">None</span>}
                   </td>
                   <td className="px-4 py-3">
                     <button onClick={(e) => openMenu(u, e.currentTarget)} aria-label={`Actions for ${u.name}`} className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100"><MoreHorizontal size={18} /></button>
@@ -114,7 +114,7 @@ export function MemberTable({ users, me, run, onSecret }: { users: TeamUser[]; m
                 <>
                   <button role="menuitem" className={item} onClick={() => pick("edit", u)}><Pencil size={15} /> Edit member</button>
                   <button role="menuitem" className={item} onClick={() => pick("task", u)}><ListChecks size={15} /> Assign to a task</button>
-                  <button role="menuitem" className={item} onClick={() => pick("roster", u)}><UsersRound size={15} /> Assign to roster</button>
+                  <button role="menuitem" className={item} onClick={() => pick("roster", u)}><UsersRound size={15} /> Assign to a service</button>
                   <button role="menuitem" className={item} onClick={() => pick("role", u)}><ShieldCheck size={15} /> Assign a role</button>
                   <button role="menuitem" className={item} onClick={() => { setMenu(null); void run(async () => { const r = await updateUser(u._id, { resetPassword: true }); if (r.password) onSecret({ name: u.name, password: r.password }); }); }}><KeyRound size={15} /> Reset password</button>
                   {!self && (
@@ -145,7 +145,6 @@ function EditDialog({ user, self, run, onClose }: RunProps & { user: TeamUser; s
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
   const [phone, setPhone] = useState(user.phone ?? "");
-  const [isAdmin, setIsAdmin] = useState(user.isAdmin);
   const [busy, setBusy] = useState(false);
   return (
     <Modal title="Edit member" onClose={onClose}>
@@ -154,7 +153,7 @@ function EditDialog({ user, self, run, onClose }: RunProps & { user: TeamUser; s
         onSubmit={async (e) => {
           e.preventDefault();
           setBusy(true);
-          await run(() => updateUser(user._id, { name, email, phone, ...(self ? {} : { isAdmin }) }));
+          await run(() => updateUser(user._id, { name, email, phone }));
           setBusy(false);
           onClose();
         }}
@@ -162,7 +161,6 @@ function EditDialog({ user, self, run, onClose }: RunProps & { user: TeamUser; s
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" required className={field} />
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required className={field} />
         <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className={field} />
-        {!self && <label className="flex items-center gap-2 text-sm text-neutral-700"><input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} /> Admin (can manage the team, rosters and reviews)</label>}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           {user.signedIn && !self ? <button type="button" onClick={() => void run(() => signOutUser(user._id)).then(onClose)} className="text-xs font-semibold text-neutral-500 underline">Sign them out of their device</button> : <span />}
           <span className="flex gap-2">
@@ -176,20 +174,26 @@ function EditDialog({ user, self, run, onClose }: RunProps & { user: TeamUser; s
 }
 
 function RoleDialog({ user, run, onClose }: RunProps & { user: TeamUser }) {
-  const [role, setRole] = useState<TeamRole | "">(user.defaultRole);
+  const { data: roles } = useCached(["roles"], listRoles);
+  const [value, setValue] = useState<string>(user.isAdmin ? "admin" : (user.appRole?._id ?? ""));
+  const options = [
+    { id: "", label: "No role", hint: "Only what everyone has, plus any service assignments" },
+    { id: "admin", label: "Admin", hint: "Everything: the team, roles, Church Profile and approving work" },
+    ...(roles ?? []).map((r) => ({ id: r._id, label: r.name, hint: r.description || r.access.filter((a) => a !== "presenter").map((a) => roleLabel(a)).join(", ") || "Only what everyone has" })),
+  ];
   return (
     <Modal title={`Assign a role to ${user.name}`} onClose={onClose}>
       <div className="space-y-2">
-        <p className="text-sm text-neutral-500">A standing role they keep whether or not they’re on a roster. Roster roles are added on top of it.</p>
-        {[{ id: "" as const, label: "No standing role", hint: "Only what their rosters give them" }, ...TEAM_ROLES].map((r) => (
-          <label key={r.id} className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-2.5 ${role === r.id ? "border-orange-400 bg-orange-50" : "border-neutral-200"}`}>
-            <input type="radio" name="role" checked={role === r.id} onChange={() => setRole(r.id)} />
+        <p className="text-sm text-neutral-500">Their role across the whole app. Service assignments are added on top while a service is on.</p>
+        {options.map((r) => (
+          <label key={r.id} className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-2.5 ${value === r.id ? "border-orange-400 bg-orange-50" : "border-neutral-200"}`}>
+            <input type="radio" name="role" checked={value === r.id} onChange={() => setValue(r.id)} />
             <span><span className="block text-sm font-medium text-neutral-900">{r.label}</span><span className="block text-xs text-neutral-500">{r.hint}</span></span>
           </label>
         ))}
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onClose} className={ghost}>Cancel</button>
-          <button onClick={async () => { await run(() => updateUser(user._id, { defaultRole: role })); onClose(); }} className={solid}>Save role</button>
+          <button onClick={async () => { await run(() => updateUser(user._id, { appRoleId: value })); onClose(); }} className={solid}>Save role</button>
         </div>
       </div>
     </Modal>
@@ -201,7 +205,7 @@ function AssignRosterDialog({ user, run, onClose }: RunProps & { user: TeamUser 
   const [serviceId, setServiceId] = useState("");
   const [role, setRole] = useState<TeamRole>("presenter");
   return (
-    <Modal title={`Assign ${user.name} to a roster`} onClose={onClose}>
+    <Modal title={`Assign ${user.name} to a service`} onClose={onClose}>
       <div className="space-y-3">
         <select value={serviceId} onChange={(e) => setServiceId(e.target.value)} className={field}>
           <option value="">Choose a service…</option>
@@ -212,7 +216,7 @@ function AssignRosterDialog({ user, run, onClose }: RunProps & { user: TeamUser 
         </select>
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className={ghost}>Cancel</button>
-          <button disabled={!serviceId} onClick={async () => { await run(() => assignMemberToRoster(user._id, { serviceId, role })); onClose(); }} className={solid}>Add to roster</button>
+          <button disabled={!serviceId} onClick={async () => { await run(() => assignMemberToRoster(user._id, { serviceId, role })); onClose(); }} className={solid}>Assign</button>
         </div>
       </div>
     </Modal>
@@ -265,7 +269,7 @@ function ViewRosterDialog({ user, onClose }: { user: TeamUser; onClose: () => vo
   const { data, error } = useCached(["member-roster", user._id], () => memberRoster(user._id));
   const rows = data?.[tab] ?? [];
   return (
-    <Modal title={`${user.name} — roster`} onClose={onClose}>
+    <Modal title={`${user.name} — service assignments`} onClose={onClose}>
       <div role="tablist" className="inline-flex gap-1 rounded-full bg-neutral-100 p-1">
         {([["upcoming", "Upcoming / Active"], ["history", "History"]] as const).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${tab === k ? "bg-white text-orange-600 shadow-sm" : "text-neutral-500 hover:text-neutral-800"}`}>{label}{data ? ` (${data[k].length})` : ""}</button>

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Maximize2, Mic, MicOff, Minimize2, PhoneOff, Users, Video, VideoOff } from "lucide-react";
+import { BellRing, Maximize2, Mic, MicOff, Minimize2, PhoneOff, Users, Video, VideoOff } from "lucide-react";
+import { useAuth } from "@/components/AuthProvider";
+import { pingCall } from "@/lib/chat";
 import { Avatar } from "@/components/notify/ToastHost";
 import { useCall, type CallSession, type Tile } from "./CallProvider";
 
@@ -49,6 +51,18 @@ export function CallOverlay({ session, canEnd }: { session: CallSession; canEnd:
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState("");
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const { user } = useAuth();
+  const [pinged, setPinged] = useState(""); // what happened the last time an admin re-pinged the room
+  async function ping() {
+    setPinged("Pinging…");
+    try {
+      const { pinged: n } = await pingCall(session.roomId);
+      setPinged(n ? `Pinged ${n} ${n === 1 ? "person" : "people"} who aren’t on the call` : "Everyone in the room is already on the call");
+    } catch (e) {
+      setPinged(e instanceof Error ? e.message : "Couldn’t ping");
+    }
+    setTimeout(() => setPinged(""), 6000);
+  }
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
@@ -85,7 +99,7 @@ export function CallOverlay({ session, canEnd }: { session: CallSession; canEnd:
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#22c55e] opacity-70" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#22c55e]" />
           </span>
-          <span className="text-sm font-semibold">{session.roomName}</span>
+          <span className="text-sm font-semibold">{session.title || session.roomName}</span>
           <span className="text-xs tabular-nums text-[#a3a3a3]">{clock(elapsed)}</span>
           <button onClick={toggleMic} disabled={!session.hasMic} aria-label={session.micOn ? "Mute" : "Unmute"} className={`${ctl(session.micOn)} !h-9 !w-9 disabled:opacity-40`}>
             {session.micOn ? <Mic size={16} /> : <MicOff size={16} />}
@@ -109,12 +123,13 @@ export function CallOverlay({ session, canEnd }: { session: CallSession; canEnd:
           <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#22c55e]" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-base font-semibold">{session.roomName}</h2>
+          <h2 className="truncate text-base font-semibold">{session.title || session.roomName}</h2>
           <p className="flex items-center gap-2 text-xs text-[#a3a3a3]">
             <span className="tabular-nums">{clock(elapsed)}</span>
             <span className="inline-flex items-center gap-1">
               <Users size={12} /> {n}
             </span>
+            {session.title && <span>{session.roomName}</span>}
             <span>Host: {session.host.name}</span>
             {session.reconnecting && <span className="font-semibold text-[#fbbf24]">Reconnecting…</span>}
           </p>
@@ -139,6 +154,14 @@ export function CallOverlay({ session, canEnd }: { session: CallSession; canEnd:
         {!session.hasMic && <p className="mb-3 text-center text-sm text-[#fbbf24]">Your microphone is blocked, so you can listen but not speak. Allow it in your browser’s site settings and rejoin.</p>}
         {error && <p className="mb-3 text-center text-sm text-[#fca5a5]">{error}</p>}
         {controls}
+        {user?.isAdmin && (
+          <div className="mt-4 flex flex-col items-center gap-1.5">
+            <button onClick={() => void ping()} disabled={pinged === "Pinging…"} className="inline-flex items-center gap-2 rounded-full bg-[rgba(255,255,255,0.1)] px-4 py-2 text-sm font-medium text-[#ffffff] hover:bg-[rgba(255,255,255,0.18)] disabled:opacity-50">
+              <BellRing size={15} /> Ping people not on the call
+            </button>
+            {pinged && <span role="status" className="text-xs text-[#a3a3a3]">{pinged}</span>}
+          </div>
+        )}
         {canEnd && (
           <div className="mt-4 flex justify-center">
             {confirmEnd ? (
