@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import type { Quote } from "@/lib/types";
 
 function useCopy() {
@@ -48,14 +47,16 @@ function QuoteCard({
   onCopy,
   selected,
   onToggleSelect,
+  onEdit,
 }: {
   quote: Quote;
   copiedId: string | null;
   onCopy: (id: string, text: string) => void;
   selected: boolean;
   onToggleSelect: (id: string) => void;
+  onEdit?: (quote: Quote) => Promise<void> | void;
 }) {
-  const router = useRouter();
+  const [opening, setOpening] = useState(false);
   return (
     <div
       className={`flex h-full! justify-between flex-col rounded-lg border p-3 ${selected ? "border-amber-400 bg-amber-100" : "border-amber-200 bg-amber-50"}`}
@@ -79,18 +80,34 @@ function QuoteCard({
         >
           {copiedId === `${quote._id}-text` ? "Copied!" : "Copy quote"}
         </button>
-        <button
-          onClick={() => router.push(`/editor/${quote._id}`)}
-          className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
-        >
-          Generate image
-        </button>
+        {onEdit && (
+          <button
+            disabled={opening}
+            onClick={async () => {
+              setOpening(true);
+              try {
+                await onEdit(quote);
+              } finally {
+                setOpening(false);
+              }
+            }}
+            className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100 disabled:opacity-60"
+          >
+            {opening ? "Opening…" : "Create with editor"}
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-export function QuotesPanel({ quotes }: { quotes: Quote[] }) {
+export function QuotesPanel({
+  quotes,
+  onEdit,
+}: {
+  quotes: Quote[];
+  onEdit?: (quote: Quote) => Promise<void> | void;
+}) {
   const { copiedId, copy } = useCopy();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -142,14 +159,14 @@ export function QuotesPanel({ quotes }: { quotes: Quote[] }) {
   }
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="rounded-xl bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold text-neutral-900">
             Punchy quotes
           </h2>
           <p className="mt-0.5 text-xs text-neutral-500">
-            Ready to post. Copy and drop into your image generator of choice.
+            Ready to post. Copy them, or turn any quote into an image with the editor.
           </p>
         </div>
         {quotes.length > 0 && (
@@ -196,6 +213,7 @@ export function QuotesPanel({ quotes }: { quotes: Quote[] }) {
                 onCopy={copy}
                 selected={selected.has(primary._id)}
                 onToggleSelect={toggleSelect}
+                onEdit={onEdit}
               />
               {/* {rest.length > 0 && (
                 <div className="mt-1.5 pl-2">

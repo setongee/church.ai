@@ -1,4 +1,6 @@
+import { deleteServiceCascade } from '../services/deletion.service.js';
 import crypto from 'crypto';
+import { clearAccessCache } from '../services/access.service.js';
 import { Service } from '../models/Service.model.js';
 import { Session } from '../models/Session.model.js';
 import { Quote } from '../models/Quote.model.js';
@@ -7,6 +9,13 @@ import { uploadImage } from '../services/cloudinary.service.js';
 function templateDataUri(file) {
   return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
 }
+
+const parseDate = (v) => {
+  if (v === undefined) return undefined;
+  if (!v) return null;
+  const d = new Date(`${String(v).slice(0, 10)}T12:00:00Z`);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+};
 
 export async function createService(req, res) {
   const { name } = req.body;
@@ -29,7 +38,7 @@ export async function createService(req, res) {
     return res.status(502).json({ error: 'Failed to upload template image. Check the Cloudinary env vars are set.' });
   }
 
-  const service = await Service.create({ name: name.trim(), portraitTemplateUrl, landscapeTemplateUrl });
+  const service = await Service.create({ name: name.trim(), date: parseDate(req.body.date) ?? null, portraitTemplateUrl, landscapeTemplateUrl });
   res.status(201).json(service);
 }
 
@@ -39,6 +48,7 @@ export async function updateService(req, res) {
   if (!service) return res.status(404).json({ error: 'service not found' });
 
   if (req.body.name?.trim()) service.name = req.body.name.trim();
+  if (parseDate(req.body.date) !== undefined) service.date = parseDate(req.body.date);
 
   const portraitFile = req.files?.portraitTemplate?.[0];
   const landscapeFile = req.files?.landscapeTemplate?.[0];
@@ -56,12 +66,15 @@ export async function updateService(req, res) {
   if (landscapeTemplateUrl) service.landscapeTemplateUrl = landscapeTemplateUrl;
 
   await service.save();
+  clearAccessCache(); // a changed date moves the window the team's access runs for
   res.json(service);
 }
 
 export async function listServices(req, res) {
   const services = await Service.find().sort({ createdAt: -1 }).limit(200);
-  res.json(services);
+  const counts = await Session.aggregate([{ $match: { service: { $in: services.map((x) => x._id) } } }, { $group: { _id: '$service', n: { $sum: 1 } } }]);
+  const byService = new Map(counts.map((c) => [String(c._id), c.n]));
+  res.json(services.map((x) => ({ ...x.toObject(), sessionCount: byService.get(String(x._id)) ?? 0 })));
 }
 
 export async function getService(req, res) {
@@ -91,4 +104,10 @@ export async function getServiceQuotes(req, res) {
   }));
 
   res.json({ service, quotes: quotesWithSession });
+}
+
+export async function deleteService(req, res) {
+  const result = await deleteServiceCascade(req.params.id);
+  if (!result) return res.status(404).json({ error: 'service not found' });
+  res.json({ ok: true, ...result });
 }

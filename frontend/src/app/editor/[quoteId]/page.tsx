@@ -1,47 +1,20 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
-import Link from 'next/link';
-import { getQuote, type QuoteWithSession } from '@/lib/api';
-import { QuoteImageEditor } from '@/components/QuoteImageEditor';
-import type { Service } from '@/lib/types';
+import { useRouter } from 'next/navigation';
+import { createDesign, getQuote } from '@/lib/api';
 
-export default function QuoteEditorPage({ params }: { params: Promise<{ quoteId: string }> }) {
+// Old per-quote editor URL: open (or create) the quote's design in the session's Editor tab.
+export default function LegacyQuoteEditorRedirect({ params }: { params: Promise<{ quoteId: string }> }) {
   const { quoteId } = use(params);
-  const [data, setData] = useState<QuoteWithSession | null>(null);
+  const router = useRouter();
   const [error, setError] = useState('');
 
   useEffect(() => {
     getQuote(quoteId)
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load quote'));
-  }, [quoteId]);
+      .then(({ quote, session }) => createDesign({ sessionId: session._id, source: 'quote', sourceId: quote._id, text: quote.text }).then(({ design }) => router.replace(`/design/${design._id}`)))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to open the editor'));
+  }, [quoteId, router]);
 
-  if (error) {
-    return <main className="mx-auto max-w-5xl px-6 py-12 text-sm text-red-600">{error}</main>;
-  }
-
-  if (!data) {
-    return <main className="mx-auto max-w-5xl px-6 py-12 text-sm text-neutral-400">Loading...</main>;
-  }
-
-  const { quote, session } = data;
-  const service = typeof session.service === 'object' ? (session.service as Service) : null;
-
-  return (
-    <main className="mx-auto max-w-5xl px-6 py-8">
-      <Link
-        href={`/sessions/${session._id}`}
-        className="text-xs text-neutral-400 hover:text-neutral-600"
-      >
-        &larr; {session.title}
-      </Link>
-      <h1 className="mt-1 text-xl font-semibold text-neutral-900">Image editor</h1>
-      <p className="mt-1 text-sm text-neutral-500">&ldquo;{quote.text}&rdquo;</p>
-
-      <div className="mt-6">
-        <QuoteImageEditor quote={quote} service={service} />
-      </div>
-    </main>
-  );
+  return <main className="mx-auto max-w-5xl px-6 py-12 text-sm text-neutral-500">{error ? <span className="text-red-600">{error}</span> : 'Opening the editor…'}</main>;
 }

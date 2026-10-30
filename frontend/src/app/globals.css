@@ -8,14 +8,190 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-google-sans), sans-serif;
   --font-mono: var(--font-geist-mono);
+}
+
+/* Dark mode. The app is styled with Tailwind's neutral/white palette throughout, so dark mode
+   re-points those palette variables (an inverted scale) instead of restyling every component.
+   Toggled by the "dark" class on <html> (see ThemeToggle). */
+:root.dark {
+  color-scheme: dark;
+  --background: #0b0b0c;
+  --foreground: #ededf0;
+
+  --color-white: #161618;
+  --color-neutral-50: #1b1b1e;
+  --color-neutral-100: #202024;
+  --color-neutral-200: #2c2c31;
+  --color-neutral-300: #3a3a40;
+  --color-neutral-400: #8a8a93;
+  --color-neutral-500: #a1a1aa;
+  --color-neutral-600: #b4b4bd;
+  --color-neutral-700: #cfcfd6;
+  --color-neutral-800: #e4e4e8;
+  --color-neutral-900: #f4f4f5;
+  --color-neutral-950: #fafafa;
+  --color-gray-50: #1b1b1e;
+  --color-gray-100: #0f0f11;
+  --color-gray-200: #2c2c31;
+  --color-gray-300: #3a3a40;
+  --color-gray-400: #8a8a93;
+  --color-gray-500: #a1a1aa;
+  --color-gray-600: #b4b4bd;
+  --color-gray-700: #cfcfd6;
+  --color-gray-800: #e4e4e8;
+  --color-gray-900: #f4f4f5;
+
+  /* Tinted notices (errors, success, info) keep their hue but sit on dark tints. */
+  --color-red-50: #2a1214;
+  --color-red-100: #3a181b;
+  --color-red-600: #f87171;
+  --color-red-700: #fca5a5;
+  --color-green-50: #10261a;
+  --color-green-100: #163523;
+  --color-green-600: #4ade80;
+  --color-green-700: #86efac;
+  --color-blue-50: #101d33;
+  --color-blue-100: #162a4a;
+  --color-blue-300: #1d4ed8;
+  --color-blue-700: #93c5fd;
+  --color-amber-50: #2a2010;
+  --color-amber-100: #3a2c12;
+  --color-amber-300: #92661a;
+  --color-amber-800: #fcd34d;
+  --color-amber-900: #fde68a;
+  --color-orange-50: #2b1a0e;
+  --color-orange-100: #3d2412;
+  --color-orange-200: #5a3516;
+  --color-orange-600: #fb923c;
+}
+
+/* Colour themes (applied through skins, see lib/skins.ts). The app's accent is Tailwind's orange (+ a touch of amber in gradients), so a
+   theme re-points those palettes. "ember" is the default and lives on :root.
+   Contrast rules every theme follows (checked against WCAG AA, 4.5:1):
+   - light mode: shade 600 is the solid button fill (white text) and the accent text colour on white, and shade
+     700 is the accent text on the pale 50/100 tints - so both are deep enough;
+   - dark mode: accent text must be LIGHT (600/700/800/900 flip to pale shades), but a solid button still needs
+     a DEEP fill under its white text, so .bg-orange-600 and its hover use --accent-solid(-hover) instead. */
+:root {
+  --color-orange-600: #c74b0a;
+  --color-orange-700: #9a3412;
+  --accent-solid: #c74b0a;
+  --accent-solid-hover: #9a3412;
+}
+:root.dark {
+  --color-orange-700: #fdba74;
+  --color-orange-800: #fed7aa;
+  --color-orange-900: #ffedd5;
+}
+:root.dark .bg-orange-600 { background-color: var(--accent-solid); }
+:root.dark .hover\:bg-orange-700:hover { background-color: var(--accent-solid-hover); }
+:root[data-theme="ocean"] {
+  --color-orange-50: #eff6ff;
+  --color-orange-100: #dbeafe;
+  --color-orange-200: #bfdbfe;
+  --color-orange-300: #93c5fd;
+  --color-orange-400: #60a5fa;
+  --color-orange-500: #3b82f6;
+  --color-orange-600: #2563eb;
+  --color-orange-700: #1d4ed8;
+  --color-orange-800: #1e40af;
+  --color-orange-900: #1e3a8a;
+  --color-amber-400: #38bdf8;
+  --color-amber-500: #0ea5e9;
+  --accent-solid: #2563eb;
+  --accent-solid-hover: #1d4ed8;
+}
+:root.dark[data-theme="ocean"] {
+  --color-orange-50: #0f1b30;
+  --color-orange-100: #14264a;
+  --color-orange-200: #1e3a6b;
+  --color-orange-600: #60a5fa;
+  --color-orange-700: #93c5fd;
+  --color-orange-800: #bfdbfe;
+  --color-orange-900: #dbeafe;
+}
+:root[data-theme="forest"] {
+  --color-orange-50: #ecfdf5;
+  --color-orange-100: #d1fae5;
+  --color-orange-200: #a7f3d0;
+  --color-orange-300: #6ee7b7;
+  --color-orange-400: #34d399;
+  --color-orange-500: #10b981;
+  --color-orange-600: #048059;
+  --color-orange-700: #065f46;
+  --color-orange-800: #064e3b;
+  --color-orange-900: #022c22;
+  --color-amber-400: #2dd4bf;
+  --color-amber-500: #14b8a6;
+  --accent-solid: #048059;
+  --accent-solid-hover: #065f46;
+}
+:root.dark[data-theme="forest"] {
+  --color-orange-50: #0e2219;
+  --color-orange-100: #123325;
+  --color-orange-200: #1a4d36;
+  --color-orange-600: #34d399;
+  --color-orange-700: #6ee7b7;
+  --color-orange-800: #a7f3d0;
+  --color-orange-900: #d1fae5;
+}
+:root[data-theme="royal"] {
+  --color-orange-50: #f5f3ff;
+  --color-orange-100: #ede9fe;
+  --color-orange-200: #ddd6fe;
+  --color-orange-300: #c4b5fd;
+  --color-orange-400: #a78bfa;
+  --color-orange-500: #8b5cf6;
+  --color-orange-600: #7c3aed;
+  --color-orange-700: #6d28d9;
+  --color-orange-800: #5b21b6;
+  --color-orange-900: #4c1d95;
+  --color-amber-400: #e879f9;
+  --color-amber-500: #d946ef;
+  --accent-solid: #7c3aed;
+  --accent-solid-hover: #6d28d9;
+}
+:root.dark[data-theme="royal"] {
+  --color-orange-50: #1a1530;
+  --color-orange-100: #251d47;
+  --color-orange-200: #382a6b;
+  --color-orange-600: #a78bfa;
+  --color-orange-700: #c4b5fd;
+  --color-orange-800: #ddd6fe;
+  --color-orange-900: #ede9fe;
+}
+:root[data-theme="rose"] {
+  --color-orange-50: #fff1f2;
+  --color-orange-100: #ffe4e6;
+  --color-orange-200: #fecdd3;
+  --color-orange-300: #fda4af;
+  --color-orange-400: #fb7185;
+  --color-orange-500: #f43f5e;
+  --color-orange-600: #e11d48;
+  --color-orange-700: #be123c;
+  --color-orange-800: #9f1239;
+  --color-orange-900: #881337;
+  --color-amber-400: #f472b6;
+  --color-amber-500: #ec4899;
+  --accent-solid: #e11d48;
+  --accent-solid-hover: #be123c;
+}
+:root.dark[data-theme="rose"] {
+  --color-orange-50: #2a1118;
+  --color-orange-100: #3d1822;
+  --color-orange-200: #5c2434;
+  --color-orange-600: #fb7185;
+  --color-orange-700: #fda4af;
+  --color-orange-800: #fecdd3;
+  --color-orange-900: #ffe4e6;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-google-sans), Arial, Helvetica, sans-serif;
 }
 
 /* Quote image editor custom fonts - served locally from /public/fonts so they render
@@ -66,4 +242,249 @@ body {
   font-weight: 400;
   font-style: normal;
   font-display: block;
+}
+
+/* Present screen transitions */
+@keyframes present-fade-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes present-slide-up { from { transform: translateY(100%) } to { transform: translateY(0) } }
+.present-fade { animation: present-fade-in .35s ease-out both }
+.present-slide-up { animation: present-slide-up .4s cubic-bezier(.2,.8,.2,1) both }
+@keyframes present-kenburns { from { transform: scale(1) } to { transform: scale(1.14) } }
+.present-zoom { animation: present-kenburns 18s ease-out both }
+@keyframes present-progress { from { width: 0 } to { width: 100% } }
+
+/* Song text effects (see TEXT_EFFECTS in lib/present.ts). --fx-d = cycle length, --fx-c = effect colour,
+   --fx-base = the slide's normal text colour. */
+@keyframes fx-pulse { 0%, 100% { transform: scale(1) } 50% { transform: scale(1.055) } }
+@keyframes fx-glow {
+  0%, 100% { text-shadow: 0 0 10px var(--fx-c), 0 0 26px var(--fx-c) }
+  50% { text-shadow: 0 0 24px var(--fx-c), 0 0 54px var(--fx-c), 0 0 96px var(--fx-c) }
+}
+@keyframes fx-neon {
+  0%, 100% { -webkit-text-stroke: 2px var(--fx-c); text-shadow: 0 0 6px var(--fx-c), 0 0 20px var(--fx-c), 0 0 44px var(--fx-c) }
+  50% { -webkit-text-stroke: 3px var(--fx-c); text-shadow: 0 0 12px var(--fx-c), 0 0 34px var(--fx-c), 0 0 76px var(--fx-c) }
+}
+@keyframes fx-outline { 0%, 100% { -webkit-text-stroke-width: 0 } 50% { -webkit-text-stroke-width: 14px } }
+@keyframes fx-shimmer { from { background-position: 150% 0 } to { background-position: -100% 0 } }
+@keyframes fx-float { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-14px) } }
+@keyframes fx-rise { from { opacity: 0; transform: translateY(46px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes fx-wave { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-14px) } }
+.fx-pulse { animation: fx-pulse var(--fx-d) ease-in-out infinite }
+.fx-glow { animation: fx-glow var(--fx-d) ease-in-out infinite }
+.fx-neon { animation: fx-neon var(--fx-d) ease-in-out infinite }
+.fx-outline { paint-order: stroke fill; -webkit-text-stroke: 0 var(--fx-c); animation: fx-outline var(--fx-d) ease-in-out infinite }
+.fx-shimmer {
+  background: linear-gradient(100deg, var(--fx-base) 38%, var(--fx-c) 50%, var(--fx-base) 62%) 0 0 / 250% 100%;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; text-shadow: none !important;
+  animation: fx-shimmer var(--fx-d) linear infinite;
+}
+.fx-float { animation: fx-float var(--fx-d) ease-in-out infinite }
+.fx-line { display: block; opacity: 0; animation: fx-rise var(--fx-d) cubic-bezier(.2, .8, .2, 1) forwards }
+.fx-letter { display: inline-block; animation: fx-wave var(--fx-d) ease-in-out infinite }
+
+/* Chart series colours (categorical slots 1 and 2 of the reference data-viz palette; dark mode has its own steps). */
+:root { --viz-1: #2a78d6; --viz-2: #eb6834; }
+:root.dark { --viz-1: #3987e5; --viz-2: #d95926; }
+
+/* Alert banner motion (see ALERT_EFFECTS in lib/present.ts). */
+@keyframes alert-slide-up { from { transform: translateY(110%); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+@keyframes alert-slide-down { from { transform: translateY(-110%); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+@keyframes alert-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes alert-pop { 0% { transform: scale(.82); opacity: 0 } 60% { transform: scale(1.04); opacity: 1 } 100% { transform: scale(1) } }
+@keyframes alert-scroll { from { transform: translateX(0) } to { transform: translateX(-100%) } }
+.alert-fx-slide-up { animation: alert-slide-up .55s cubic-bezier(.2, .8, .2, 1) both }
+.alert-fx-slide-down { animation: alert-slide-down .55s cubic-bezier(.2, .8, .2, 1) both }
+.alert-fx-fade, .alert-fx-scroll { animation: alert-fade .6s ease-out both }
+.alert-fx-pop { animation: alert-pop .5s cubic-bezier(.2, .9, .3, 1.2) both }
+.alert-ticker { display: inline-block; padding-left: 100%; white-space: nowrap; animation: alert-scroll var(--alert-d) linear infinite }
+
+/* ---- Mobile / installed-app behaviour ------------------------------------------------------------------ */
+html { -webkit-text-size-adjust: 100%; }
+body {
+  /* Keep content clear of the notch and the home bar when running full screen. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+/* No pull-to-refresh / bounce while a screen is running full screen as an app (it would reload mid-service). */
+@media (display-mode: standalone) {
+  html, body { overscroll-behavior-y: none; }
+}
+/* Inputs under 16px make iOS zoom the page on focus. */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select { font-size: 16px; }
+}
+/* Comfortable touch targets on touch screens. */
+@media (pointer: coarse) {
+  button, [role="button"], summary { min-height: 36px; }
+}
+
+/* A grid with no column template (and none set for phones) sizes its single column to its content, which can push
+   a wide child off the screen. On phones make that column shrinkable instead. */
+@media (max-width: 639px) {
+  .grid:not([class*=" grid-cols-"]):not([class^="grid-cols-"]):not([class*="grid-flow-"]):not([class*="auto-cols"]):not([class*="grid-areas"]) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@keyframes toast-bar { from { width: 100% } to { width: 0 } }
+
+@keyframes deeplink-flash { 0%, 100% { box-shadow: 0 0 0 0 rgba(234,88,12,0) } 20%, 60% { box-shadow: 0 0 0 4px rgba(234,88,12,.55) } }
+.deeplink-flash { animation: deeplink-flash 2.4s ease-in-out; border-radius: 12px; }
+
+@keyframes calendar-drawer-in { from { transform: translateX(100%) } to { transform: translateX(0) } }
+
+/* Chat skins (Settings, or a service wrapper). Each re-points the palette inside the chat only, like the colour themes
+   do for the whole app: the accent scale (orange-*), and for some skins the surfaces (white / neutral-*). A solid
+   accent button keeps a deep fill under its white text in every skin. */
+[data-chat-skin] .bg-orange-600 { background-color: var(--accent-solid); }
+[data-chat-skin] .hover\:bg-orange-700:hover { background-color: var(--accent-solid-hover); }
+[data-chat-skin="warm"] {
+  --color-white: #fffaf0; --color-neutral-50: #fdf2dc; --color-neutral-100: #f8e7c8; --color-neutral-200: #efd7ae;
+  --color-orange-50: #fffbeb; --color-orange-100: #fef3c7; --color-orange-200: #fde68a; --color-orange-300: #fcd34d; --color-orange-500: #f59e0b;
+  --color-orange-600: #b45309; --color-orange-700: #92400e; --color-orange-800: #78350f; --color-orange-900: #451a03;
+  --accent-solid: #b45309; --accent-solid-hover: #92400e;
+}
+:root.dark [data-chat-skin="warm"] {
+  --color-white: #1f1912; --color-neutral-50: #271f15; --color-neutral-100: #30261a; --color-neutral-200: #43341f;
+  --color-orange-50: #2d2410; --color-orange-100: #3d3014; --color-orange-200: #5a4519; --color-orange-600: #fbbf24; --color-orange-700: #fcd34d; --color-orange-800: #fde68a; --color-orange-900: #fef3c7;
+}
+[data-chat-skin="midnight"], :root.dark [data-chat-skin="midnight"] {
+  color-scheme: dark;
+  --color-white: #0f1424; --color-neutral-50: #151b30; --color-neutral-100: #1b2340; --color-neutral-200: #28325a; --color-neutral-300: #343f6e;
+  --color-neutral-400: #8a93b8; --color-neutral-500: #a3abcc; --color-neutral-600: #b8bfdc; --color-neutral-700: #d0d5ea; --color-neutral-800: #e4e7f5; --color-neutral-900: #f4f5fc;
+  --color-red-50: #2a1214; --color-red-700: #fca5a5; --color-green-50: #10261a; --color-green-700: #86efac;
+  --color-orange-50: #181c3a; --color-orange-100: #1f2550; --color-orange-200: #2b3470; --color-orange-300: #4551a8; --color-orange-500: #6366f1;
+  --color-orange-600: #818cf8; --color-orange-700: #a5b4fc; --color-orange-800: #c7d2fe; --color-orange-900: #e0e7ff;
+  --accent-solid: #4f46e5; --accent-solid-hover: #4338ca;
+  color: var(--color-neutral-800);
+}
+[data-chat-skin="forest"] {
+  --color-white: #f7fcf9; --color-neutral-50: #eaf6ef; --color-neutral-100: #dcefe4; --color-neutral-200: #c3e1d0;
+  --color-orange-50: #ecfdf5; --color-orange-100: #d1fae5; --color-orange-200: #a7f3d0; --color-orange-300: #6ee7b7; --color-orange-500: #10b981;
+  --color-orange-600: #048059; --color-orange-700: #065f46; --color-orange-800: #064e3b; --color-orange-900: #022c22;
+  --accent-solid: #048059; --accent-solid-hover: #065f46;
+}
+:root.dark [data-chat-skin="forest"] {
+  --color-white: #0f1914; --color-neutral-50: #14211a; --color-neutral-100: #1a2b21; --color-neutral-200: #25402f;
+  --color-orange-50: #0e2219; --color-orange-100: #123325; --color-orange-200: #1a4d36; --color-orange-600: #34d399; --color-orange-700: #6ee7b7; --color-orange-800: #a7f3d0; --color-orange-900: #d1fae5;
+}
+[data-chat-skin="ocean"] {
+  --color-white: #f6faff; --color-neutral-50: #e8f1fd; --color-neutral-100: #d9e8fb; --color-neutral-200: #bdd5f6;
+  --color-orange-50: #eff6ff; --color-orange-100: #dbeafe; --color-orange-200: #bfdbfe; --color-orange-300: #93c5fd; --color-orange-500: #3b82f6;
+  --color-orange-600: #2563eb; --color-orange-700: #1d4ed8; --color-orange-800: #1e40af; --color-orange-900: #1e3a8a;
+  --accent-solid: #2563eb; --accent-solid-hover: #1d4ed8;
+}
+:root.dark [data-chat-skin="ocean"] {
+  --color-white: #0e1626; --color-neutral-50: #131e33; --color-neutral-100: #19283f; --color-neutral-200: #243a5c;
+  --color-orange-50: #0f1b30; --color-orange-100: #14264a; --color-orange-200: #1e3a6b; --color-orange-600: #60a5fa; --color-orange-700: #93c5fd; --color-orange-800: #bfdbfe; --color-orange-900: #dbeafe;
+}
+[data-chat-skin="rose"] {
+  --color-white: #fff7f8; --color-neutral-50: #ffeaed; --color-neutral-100: #fddde2; --color-neutral-200: #f8c6cf;
+  --color-orange-50: #fff1f2; --color-orange-100: #ffe4e6; --color-orange-200: #fecdd3; --color-orange-300: #fda4af; --color-orange-500: #f43f5e;
+  --color-orange-600: #be123c; --color-orange-700: #9f1239; --color-orange-800: #881337; --color-orange-900: #4c0519;
+  --accent-solid: #be123c; --accent-solid-hover: #9f1239;
+}
+:root.dark [data-chat-skin="rose"] {
+  --color-white: #1c1114; --color-neutral-50: #261519; --color-neutral-100: #311b21; --color-neutral-200: #4a2630;
+  --color-orange-50: #2a1218; --color-orange-100: #3b1823; --color-orange-200: #5a2233; --color-orange-600: #fb7185; --color-orange-700: #fda4af; --color-orange-800: #fecdd3; --color-orange-900: #ffe4e6;
+}
+
+/* Skins (personal, chosen in Present's Layout & skin menu or Settings). A skin is an accent (one of the colour
+   themes above, set through <html data-theme>) plus a surface tone (<html data-surface>), which re-points the
+   neutral palette the whole app is styled with - the same trick dark mode uses. "default" has no override.
+   Each surface has a light block and a dark block (the dark one is more specific, so it wins in dark mode). */
+:root[data-surface="sand"] {
+  --color-white: #fffdf9;
+  --color-neutral-50: #fafaf9;
+  --color-neutral-100: #f5f5f4;
+  --color-neutral-200: #e7e5e4;
+  --color-neutral-300: #d6d3d1;
+  --color-neutral-400: #a8a29e;
+  --color-neutral-500: #78716c;
+  --color-neutral-600: #57534e;
+  --color-neutral-700: #44403c;
+  --color-neutral-800: #292524;
+  --color-neutral-900: #1c1917;
+  --color-gray-50: #fafaf9;
+  --color-gray-100: #f3efe7;
+  --color-gray-200: #e7e5e4;
+  --color-gray-300: #d6d3d1;
+  --color-gray-400: #a8a29e;
+  --color-gray-500: #78716c;
+  --color-gray-600: #57534e;
+  --color-gray-700: #44403c;
+  --color-gray-800: #292524;
+  --color-gray-900: #1c1917;
+}
+:root.dark[data-surface="sand"] {
+  --color-white: #1a1714;
+  --color-neutral-50: #201c18;
+  --color-neutral-100: #26211d;
+  --color-neutral-200: #332d27;
+  --color-neutral-300: #433b34;
+  --color-neutral-400: #938a80;
+  --color-neutral-500: #a8a096;
+  --color-neutral-600: #bbb3a9;
+  --color-neutral-700: #d4cdc4;
+  --color-neutral-800: #e8e3dc;
+  --color-neutral-900: #f6f3ee;
+  --color-gray-50: #201c18;
+  --color-gray-100: #12100e;
+  --color-gray-200: #332d27;
+  --color-gray-300: #433b34;
+  --color-gray-400: #938a80;
+  --color-gray-500: #a8a096;
+  --color-gray-600: #bbb3a9;
+  --color-gray-700: #d4cdc4;
+  --color-gray-800: #e8e3dc;
+  --color-gray-900: #f6f3ee;
+}
+:root[data-surface="slate"] {
+  --color-white: #ffffff;
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+  --color-gray-50: #f8fafc;
+  --color-gray-100: #e9eef6;
+  --color-gray-200: #e2e8f0;
+  --color-gray-300: #cbd5e1;
+  --color-gray-400: #94a3b8;
+  --color-gray-500: #64748b;
+  --color-gray-600: #475569;
+  --color-gray-700: #334155;
+  --color-gray-800: #1e293b;
+  --color-gray-900: #0f172a;
+}
+:root.dark[data-surface="slate"] {
+  --color-white: #12161d;
+  --color-neutral-50: #171c25;
+  --color-neutral-100: #1c222d;
+  --color-neutral-200: #2a313d;
+  --color-neutral-300: #394252;
+  --color-neutral-400: #8792a6;
+  --color-neutral-500: #9ca7ba;
+  --color-neutral-600: #b0bacb;
+  --color-neutral-700: #cbd3e0;
+  --color-neutral-800: #e2e7ef;
+  --color-neutral-900: #f3f5f9;
+  --color-gray-50: #171c25;
+  --color-gray-100: #0d1117;
+  --color-gray-200: #2a313d;
+  --color-gray-300: #394252;
+  --color-gray-400: #8792a6;
+  --color-gray-500: #9ca7ba;
+  --color-gray-600: #b0bacb;
+  --color-gray-700: #cbd3e0;
+  --color-gray-800: #e2e7ef;
+  --color-gray-900: #f3f5f9;
 }

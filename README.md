@@ -1,4 +1,4 @@
-# Live Transcription & Quotes
+# FAFC Media Engine
 
 Real-time transcription for live sermons/services. Streams microphone audio to the backend,
 transcribes it live via Deepgram, and uses an OpenRouter LLM to continuously pull out:

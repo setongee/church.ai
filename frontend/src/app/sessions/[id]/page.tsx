@@ -2,30 +2,36 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { endSession, getSession } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { createDesign, deleteSession, endSession, getSession } from "@/lib/api";
 import { useLiveSession } from "@/lib/useLiveSession";
 import { TranscriptDrawer } from "@/components/TranscriptDrawer";
 import { QuotesPanel } from "@/components/QuotesPanel";
 import { InsightsPanel } from "@/components/InsightsPanel";
-import { ExportsTab } from "@/components/ExportsTab";
+import { EditorLibrary, type CreateDesignInput } from "@/components/editor/EditorLibrary";
 import { MicPulse } from "@/components/MicPulse";
 import { MicSelector } from "@/components/MicSelector";
 import { StartingIndicator } from "@/components/StartingIndicator";
-import { SummaryPanel } from "@/components/SummaryPanel";
-import { CarouselPanel } from "@/components/CarouselPanel";
-import { ChatPanel } from "@/components/ChatPanel";
+import { MessageNotesPanel } from "@/components/notes/MessageNotesPanel";
+import { ReelsPanel } from "@/components/ReelsPanel";
+import { MergedPanel } from "@/components/MergedPanel";
+import { AudioPlayer } from "@/components/AudioPlayer";
+import { AudioLabPanel } from "@/components/AudioLabPanel";
 import type { Service, SessionDetail } from "@/lib/types";
 
-type TabKey = "summary" | "chat" | "notes" | "quotes" | "posts" | "exports";
+type TabKey = "message" | "notes" | "quotes" | "reels" | "merged" | "audiolab" | "editor";
 
-const ENDED_ONLY_TABS: TabKey[] = ["summary", "chat"];
+const ENDED_ONLY_TABS: TabKey[] = ["message", "reels", "merged", "audiolab"];
 
 export default function SessionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string; design?: string }>;
 }) {
   const { id } = use(params);
+  const query = use(searchParams);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
 
   useEffect(() => {
@@ -36,31 +42,53 @@ export default function SessionPage({
 
   if (!detail) {
     return (
-      <main className="mx-auto max-w-6xl px-6 py-12 text-sm text-neutral-400">
+      <main className="mx-auto w-full max-w-8xl px-4 sm:px-20 py-12 text-sm text-neutral-400">
         Loading...
       </main>
     );
   }
 
-  return <SessionView id={id} detail={detail} onDetailChange={setDetail} />;
+  return (
+    <SessionView
+      id={id}
+      detail={detail}
+      onDetailChange={setDetail}
+      initialTab={TABS.some((t) => t.key === query.tab) ? (query.tab as TabKey) : undefined}
+    />
+  );
 }
 
 function SessionView({
   id,
   detail,
   onDetailChange,
+  initialTab,
 }: {
   id: string;
   detail: SessionDetail;
+  initialTab?: TabKey;
   onDetailChange: (
     updater: (prev: SessionDetail | null) => SessionDetail | null,
   ) => void;
 }) {
   const [ending, setEnding] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>(
-    detail.session.status === "ended" ? "summary" : "notes",
+  const [activeTab, setActiveTabState] = useState<TabKey>(
+    initialTab ?? "notes",
   );
+  const router = useRouter();
+
+  // Keep the URL in sync so a refresh (or a shared link) lands back on the same tab.
+  function setActiveTab(tab: TabKey) {
+    setActiveTabState(tab);
+    const qs = tab === "notes" ? "" : `?tab=${tab}`;
+    window.history.replaceState(null, "", qs || window.location.pathname);
+  }
+
+  async function handleCreateDesign(input: CreateDesignInput) {
+    const { design } = await createDesign({ sessionId: id, ...input });
+    router.push(`/design/${design._id}`);
+  }
 
   const live = useLiveSession({
     sessionId: id,
@@ -69,7 +97,7 @@ function SessionView({
     initialInsights: detail.insights,
   });
 
-  const { session, chatMessages } = detail;
+  const { session } = detail;
   const isLive = session.status === "live";
   const service =
     typeof session.service === "object" ? (session.service as Service) : null;
@@ -109,8 +137,8 @@ function SessionView({
   }
 
   return (
-    <main className="mx-auto w-6xl px-6 py-8">
-      <div className="flex items-center justify-between">
+    <main className="mx-auto w-full max-w-8xl px-4 py-6 sm:px-20 sm:py-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link
             href={service ? `/services/${service._id}` : "/"}
@@ -124,7 +152,22 @@ function SessionView({
           <p className="text-sm text-neutral-500">{session.preacher}</p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={async () => {
+              if (!confirm(`Delete "${session.title}" with its transcript, quotes, reels and videos? This cannot be undone.`)) return;
+              try {
+                await deleteSession(id);
+                router.push(service ? `/services/${service._id}` : "/");
+              } catch (err) {
+                alert(err instanceof Error ? err.message : "Failed to delete");
+              }
+            }}
+            className="rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-500 hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+          >
+            Delete
+          </button>
           <button
             onClick={() => setShowTranscript(true)}
             className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
@@ -175,16 +218,11 @@ function SessionView({
       )}
 
       {session.status === "ended" && (
-        <div className="mt-6 rounded-lg border border-neutral-200 px-4 py-3">
+        <div className="mt-6">
           {session.audioUrl ? (
-            <>
-              <p className="mb-2 text-sm font-medium text-neutral-700">
-                Session recording
-              </p>
-              <audio controls src={session.audioUrl} className="w-full" />
-            </>
+            <AudioPlayer src={session.audioUrl} title="Session recording" />
           ) : (
-            <p className="text-sm text-neutral-400">
+            <p className="rounded-lg border border-neutral-200 px-4 py-3 text-sm text-neutral-400">
               Processing session recording...
             </p>
           )}
@@ -213,34 +251,43 @@ function SessionView({
       </div>
 
       <div className="mt-6 w-full">
-        {activeTab === "summary" &&
-          (session.summary ? (
-            <SummaryPanel
-              summary={session.summary}
-              title={session.title}
-              preacher={session.preacher}
-            />
-          ) : (
-            <div className="rounded-xl border border-dashed border-neutral-300 p-10 text-center text-sm text-neutral-400">
-              No summary was generated for this session.
-            </div>
-          ))}
-        {activeTab === "chat" && (
-          <ChatPanel sessionId={id} initialMessages={chatMessages} />
-        )}
+        {activeTab === "message" && <MessageNotesPanel session={session} />}
         {activeTab === "notes" && <InsightsPanel insights={live.insights} />}
-        {activeTab === "quotes" && <QuotesPanel quotes={live.quotes} />}
-        {activeTab === "posts" &&
-          (session.carousel && session.carousel.length > 0 ? (
-            <CarouselPanel slides={session.carousel} />
-          ) : (
-            <div className="rounded-xl border border-dashed border-neutral-300 p-10 text-center text-sm text-neutral-400">
-              Carousel slides are generated from the session summary once the
-              service has ended.
-            </div>
-          ))}
-        {activeTab === "exports" && (
-          <ExportsTab quotes={live.quotes} onUpdate={live.updateQuote} />
+        {activeTab === "quotes" && (
+          <QuotesPanel
+            quotes={live.quotes}
+            onEdit={(q) =>
+              handleCreateDesign({ source: "quote", sourceId: q._id, text: q.text })
+            }
+          />
+        )}
+        {activeTab === "reels" && (
+          <ReelsPanel
+            sessionId={id}
+            audioUrl={session.audioUrl}
+            title={session.title}
+            serviceName={service?.name ?? ""}
+            preacher={session.preacher}
+          />
+        )}
+        {activeTab === "audiolab" && <AudioLabPanel sessionId={id} hasAudio={!!session.audioUrl} onOpenMerged={() => setActiveTab("merged")} />}
+        {activeTab === "merged" && (
+          <MergedPanel
+            sessionId={id}
+            audioUrl={session.audioUrl}
+            title={session.title}
+            serviceName={service?.name ?? ""}
+            preacher={session.preacher}
+          />
+        )}
+        {activeTab === "editor" && (
+          <EditorLibrary
+            sessionId={id}
+            quotes={live.quotes}
+            carousel={session.carousel ?? []}
+            onOpen={(designId) => router.push(`/design/${designId}`)}
+            onCreate={handleCreateDesign}
+          />
         )}
       </div>
 
@@ -249,16 +296,19 @@ function SessionView({
         onClose={() => setShowTranscript(false)}
         transcript={live.transcript}
         interimText={live.interimText}
+        startedAt={session.startedAt}
+        title={session.title}
       />
     </main>
   );
 }
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "summary", label: "Summary" },
-  { key: "chat", label: "Chat" },
-  { key: "notes", label: "Notes" },
+  { key: "message", label: "Message Notes" },
+  { key: "notes", label: "Live Notes" },
   { key: "quotes", label: "Quotes" },
-  { key: "posts", label: "Posts" },
-  { key: "exports", label: "Exports" },
+  { key: "reels", label: "Reels" },
+  { key: "merged", label: "Merged" },
+  { key: "audiolab", label: "Audio Lab" },
+  { key: "editor", label: "Editor" },
 ];

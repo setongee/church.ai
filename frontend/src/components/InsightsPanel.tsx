@@ -24,7 +24,7 @@ export function InsightsPanel({ insights }: { insights: Insight[] }) {
   const isEmpty = insights.length === 0;
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-5">
+    <div className="rounded-xl bg-white p-5">
       <h2 className="text-sm font-semibold text-neutral-900">Notes</h2>
 
       {isEmpty && (

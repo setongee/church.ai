@@ -75,7 +75,7 @@ export function PublishQuoteCard({
   const isPublished = Boolean(quote.instagramMediaId);
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white">
+    <div className="flex flex-col overflow-hidden rounded-xl bg-white">
       <div className="flex items-center justify-center bg-neutral-100 p-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img

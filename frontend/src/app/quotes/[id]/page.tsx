@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { getServiceQuotes } from '@/lib/api';
+import { createDesign, getServiceQuotes } from '@/lib/api';
 import type { ServiceQuotes } from '@/lib/types';
 
 function useCopy() {
@@ -31,13 +31,13 @@ export default function ServiceQuotesPage({ params }: { params: Promise<{ id: st
   }, [id]);
 
   if (!data) {
-    return <main className="mx-auto max-w-4xl px-6 py-12 text-sm text-neutral-400">Loading...</main>;
+    return <main className="mx-auto w-full max-w-8xl px-4 sm:px-20 py-12 text-sm text-neutral-400">Loading...</main>;
   }
 
   const { service, quotes } = data;
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
+    <main className="mx-auto w-full max-w-8xl px-4 sm:px-20 py-12">
       <Link href="/quotes" className="text-xs text-neutral-400 hover:text-neutral-600">
         &larr; All services
       </Link>
@@ -66,10 +66,13 @@ export default function ServiceQuotesPage({ params }: { params: Promise<{ id: st
                 {copiedId === `${q._id}-text` ? 'Copied!' : 'Copy quote'}
               </button>
               <button
-                onClick={() => router.push(`/editor/${q._id}`)}
-                className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
+                onClick={async () => {
+                  const { design } = await createDesign({ sessionId: q.session, source: 'quote', sourceId: q._id, text: q.text });
+                  router.push(`/design/${design._id}`);
+                }}
+                className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-100"
               >
-                Generate image
+                Create with editor
               </button>
             </div>
           </div>

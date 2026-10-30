@@ -68,7 +68,7 @@ export function SummaryPanel({
   }
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+    <div className="rounded-xl bg-neutral-50 p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-neutral-900">Service summary</h2>
         <div className="flex gap-2">

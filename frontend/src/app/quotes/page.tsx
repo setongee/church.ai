@@ -14,7 +14,7 @@ export default function QuotesIndexPage() {
   }, []);
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12">
+    <main className="mx-auto w-full max-w-8xl px-4 sm:px-20 py-12">
       <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Quotes</h1>
       <p className="mt-1 text-sm text-neutral-500">
         Pick a service to see every quote generated across its sessions.
@@ -30,7 +30,7 @@ export default function QuotesIndexPage() {
           <li key={s._id}>
             <button
               onClick={() => router.push(`/quotes/${s._id}`)}
-              className="flex w-full flex-col items-start gap-1 rounded-xl border border-neutral-200 bg-white p-4 text-left shadow-sm hover:border-neutral-300"
+              className="flex w-full flex-col items-start gap-1 rounded-xl bg-white p-4 text-left hover:border-neutral-300"
             >
               <span className="text-sm font-medium text-neutral-900">{s.name}</span>
               <span className="text-xs text-neutral-400">

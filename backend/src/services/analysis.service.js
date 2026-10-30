@@ -59,6 +59,7 @@ class SessionAnalysisState {
     this.onInsight = onInsight;
 
     this.quoteBuffer = '';
+    this.quoteContext = '';
     this.insightBuffer = '';
     this.fullTranscript = '';
 
@@ -191,8 +192,10 @@ class SessionAnalysisState {
     this.quoteCheckInFlight = true;
     const windowText = this.quoteBuffer;
     this.quoteBuffer = '';
+    const precedingContext = this.quoteContext;
+    this.quoteContext = windowText.split(/\s+/).slice(-80).join(' ');
 
-    extractQuotes({ windowText, alreadyUsed: this.recentQuoteTexts })
+    extractQuotes({ windowText, alreadyUsed: this.recentQuoteTexts, precedingContext })
       .then((quotes) => {
         for (const q of quotes) {
           if (!q?.text) continue;
@@ -280,4 +283,112 @@ export function getAnalysis(sessionId) {
 
 export function stopAnalysis(sessionId) {
   activeSessions.delete(sessionId);
+}
+
+// Windowing for a finished recording. Quotes use the same ~live window size so the model's
+// "rare, sharp line" bar behaves the same; insights get a wider window like live (100+ words).
+const BATCH_QUOTE_WINDOW_WORDS = 120;
+const BATCH_INSIGHT_WINDOW_WORDS = 320;
+const BATCH_QUOTE_CONCURRENCY = 4;
+
+function windowSentences(sentences, targetWords) {
+  const windows = [];
+  let cur = [];
+  let count = 0;
+  for (const s of sentences) {
+    cur.push(s);
+    count += wordCount(s);
+    if (count >= targetWords) {
+      windows.push(cur.join(' '));
+      cur = [];
+      count = 0;
+    }
+  }
+  if (cur.length && count >= 20) windows.push(cur.join(' '));
+  else if (cur.length && windows.length) windows[windows.length - 1] += ` ${cur.join(' ')}`;
+  return windows;
+}
+
+// Runs the same quote + note extraction the live flow does, but over an already-complete
+// transcript (an uploaded recording). `sentences` is an array of strings in spoken order.
+// Results go to onQuote/onInsight with the same shapes as live; returns when everything is done.
+export async function analyzeFullTranscript(sessionId, sentences, { onQuote, onInsight }) {
+  const state = new SessionAnalysisState(sessionId, { onQuote, onInsight });
+
+  const runQuotes = async () => {
+    const windows = windowSentences(sentences, BATCH_QUOTE_WINDOW_WORDS);
+    for (let i = 0; i < windows.length; i += BATCH_QUOTE_CONCURRENCY) {
+      const batch = windows.slice(i, i + BATCH_QUOTE_CONCURRENCY);
+      const alreadyUsed = [...state.recentQuoteTexts];
+      const results = await Promise.all(
+        batch.map((windowText) =>
+          extractQuotes({ windowText, alreadyUsed })
+            .then((quotes) => ({ windowText, quotes }))
+            .catch((err) => {
+              console.error('[analysis] batch quote extraction failed', err);
+              return { windowText, quotes: [] };
+            })
+        )
+      );
+      for (const { windowText, quotes } of results) {
+        for (const q of quotes) {
+          if (!q?.text) continue;
+          // Parallel windows can't see each other's picks, so drop near-duplicates here.
+          if (state.recentQuoteTexts.some((t) => jaccardSimilarity(t, q.text) >= 0.6)) continue;
+          state.recentQuoteTexts.push(q.text);
+          if (state.recentQuoteTexts.length > RECENT_MEMORY_SIZE) state.recentQuoteTexts.shift();
+          await onQuote?.({
+            text: q.text,
+            imagePrompt: q.imagePrompt || '',
+            caption: q.caption || '',
+            sourceText: windowText,
+            groupId: state.assignGroupId(q.text),
+          });
+        }
+      }
+    }
+  };
+
+  const runInsights = async () => {
+    for (const windowText of windowSentences(sentences, BATCH_INSIGHT_WINDOW_WORDS)) {
+      let insights = [];
+      try {
+        insights = await extractInsights({ windowText, alreadyCaptured: state.recentInsightTexts });
+      } catch (err) {
+        console.error('[analysis] batch insight extraction failed', err);
+      }
+      for (const insight of insights) {
+        if (!insight?.text || !insight?.type) continue;
+        state.recentInsightTexts.push(insight.text);
+        if (state.recentInsightTexts.length > RECENT_MEMORY_SIZE) state.recentInsightTexts.shift();
+
+        if (insight.type === 'keyPoint' && Array.isArray(insight.items) && insight.items.length > 0) {
+          const { groupId, items } = state.mergeKeyPointList(insight.text, insight.items);
+          await onInsight?.({ type: 'keyPoint', text: insight.text, reference: '', items, groupId });
+        } else if (insight.type === 'topic') {
+          if (!insight.explicit) continue;
+          state.hasTopic = true;
+          await onInsight?.({ type: 'topic', text: insight.text, reference: '', groupId: state.topicGroupId });
+        } else if (insight.type === 'scripture') {
+          let reference = insight.reference || '';
+          if (!reference) reference = (await identifyScriptureReference({ text: insight.text }).catch(() => null)) || '';
+          await onInsight?.({
+            type: 'scripture',
+            text: insight.text,
+            reference,
+            groupId: `${sessionId}-scripture${++state.scriptureCounter}`,
+          });
+        } else {
+          await onInsight?.({ type: insight.type, text: insight.text, reference: insight.reference || '' });
+        }
+      }
+    }
+    // No explicit title announced: give the notes a guessed one, same as live.
+    if (!state.hasTopic) {
+      const title = await generateMessageTitle({ transcriptSoFar: sentences.join(' ') }).catch(() => null);
+      if (title) await onInsight?.({ type: 'topic', text: title, reference: '', groupId: state.topicGroupId });
+    }
+  };
+
+  await Promise.all([runQuotes(), runInsights()]);
 }

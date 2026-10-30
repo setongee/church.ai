@@ -35,7 +35,7 @@ export function ChatPanel({ sessionId, initialMessages }: { sessionId: string; i
   }
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="rounded-xl bg-white p-4">
       <h2 className="text-sm font-semibold text-neutral-900">Ask about this service</h2>
       <p className="mt-0.5 text-xs text-neutral-500">
         Ask questions about anything said during this session.

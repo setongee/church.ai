@@ -1,0 +1,110 @@
+{
+ "sub1": {
+  "file": "sub1.mp3",
+  "hit": 0.02
+ },
+ "sub2": {
+  "file": "sub2.mp3",
+  "hit": 0.03
+ },
+ "sub3": {
+  "file": "sub3.mp3",
+  "hit": 0.02
+ },
+ "sub4": {
+  "file": "sub4.mp3",
+  "hit": 0
+ },
+ "sub5": {
+  "file": "sub5.mp3",
+  "hit": 0
+ },
+ "low4": {
+  "file": "low4.mp3",
+  "hit": 0
+ },
+ "low5": {
+  "file": "low5.mp3",
+  "hit": 0
+ },
+ "impact1": {
+  "file": "impact1.mp3",
+  "hit": 1.44
+ },
+ "impact2": {
+  "file": "impact2.mp3",
+  "hit": 0.8
+ },
+ "impact4": {
+  "file": "impact4.mp3",
+  "hit": 0.08
+ },
+ "revriser": {
+  "file": "revriser.mp3",
+  "hit": 1.4
+ },
+ "flame": {
+  "file": "flame.mp3",
+  "hit": 0.45
+ },
+ "whip": {
+  "file": "whip.mp3",
+  "hit": 0.32
+ },
+ "fastswish": {
+  "file": "fastswish.mp3",
+  "hit": 0.2
+ },
+ "sharp": {
+  "file": "sharp.mp3",
+  "hit": 0.18
+ },
+ "fastwhoosh": {
+  "file": "fastwhoosh.mp3",
+  "hit": 0.42
+ },
+ "golden": {
+  "file": "golden.mp3",
+  "hit": 0.34
+ },
+ "long": {
+  "file": "long.mp3",
+  "hit": 0.52
+ },
+ "swoosh2": {
+  "file": "swoosh2.mp3",
+  "hit": 0.54
+ },
+ "verylong": {
+  "file": "verylong.mp3",
+  "hit": 0.76
+ },
+ "delay": {
+  "file": "delay.mp3",
+  "hit": 0.88
+ },
+ "panoramic": {
+  "file": "panoramic.mp3",
+  "hit": 0.5
+ },
+ "t1": {
+  "file": "t1.mp3",
+  "hit": 0.4
+ },
+ "t2": {
+  "file": "t2.mp3",
+  "hit": 0.04
+ },
+ "shutter": {
+  "file": "shutter.mp3",
+  "hit": 0.56
+ },
+ "camera": {
+  "file": "camera.mp3",
+  "hit": 0.64
+ },
+ "bips": {
+  "file": "bips.mp3",
+  "hit": 0.08
+ }
+}

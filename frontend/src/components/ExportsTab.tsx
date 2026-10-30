@@ -36,7 +36,7 @@ export function ExportsTab({
   }
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="rounded-xl bg-white p-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-neutral-900">Exports</h2>

@@ -47,21 +47,21 @@ export default function PublishPage({ params }: { params: Promise<{ id: string }
 
   if (loadError) {
     return (
-      <main className="mx-auto max-w-6xl px-6 py-12">
+      <main className="mx-auto w-full max-w-8xl px-4 sm:px-20 py-12">
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{loadError}</p>
       </main>
     );
   }
 
   if (!queue) {
-    return <main className="mx-auto max-w-6xl px-6 py-12 text-sm text-neutral-400">Loading...</main>;
+    return <main className="mx-auto w-full max-w-8xl px-4 sm:px-20 py-12 text-sm text-neutral-400">Loading...</main>;
   }
 
   const { session, quotes } = queue;
   const unpublishedCount = quotes.filter((q) => !q.instagramMediaId).length;
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-8xl px-4 sm:px-20 py-8">
       <div className="flex items-center justify-between">
         <div>
           <Link href={`/sessions/${id}`} className="text-xs text-neutral-400 hover:text-neutral-600">

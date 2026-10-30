@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Recap Reel Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;600;800&family=Bowlby+One&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="src/styles.css" />
+  </head>
+  <body>
+    <script>
+      if (/[?&]embed=1/.test(location.search)) document.body.classList.add("embed");
+    </script>
+    <header>
+      <h1>Recap Reel <span>Studio</span></h1>
+      <p>
+        Add your service clips and photos, the word message audio and your music. Then render a beat-synced
+        9:16 recap with sound design and an end card, ready to post.
+      </p>
+    </header>
+    <main>
+      <div id="controls">
+        <section class="card">
+          <h2><b>1</b>Videos &amp; photos</h2>
+          <p class="hint">
+            The first item is the opening hero shot (stage or speaker works best). The last two are the outro:
+            smiles and waves. Everything in between drives the beat montage and the word section. Aim for
+            10–25 items.
+          </p>
+          <label class="drop" id="dropMedia"
+            >Tap to add or drop videos/photos here<input
+              type="file"
+              id="inMedia"
+              accept="video/*,image/*"
+              multiple
+          /></label>
+          <div class="thumbs" id="thumbs"></div>
+        </section>
+
+        <section class="card">
+          <h2><b>2</b>The word (message audio)</h2>
+          <p class="hint">
+            An MP3 clip from the sermon. It plays over slow-motion shots while the music ducks underneath.
+          </p>
+          <label class="drop"
+            >Tap to add the message MP3/M4A/WAV<input type="file" id="inMsg" accept="audio/*"
+          /></label>
+          <div id="msgFile"></div>
+          <div class="row">
+            <div>
+              <label class="f">Start at (s)</label>
+              <div class="rng">
+                <input type="range" id="msgStart" min="0" max="60" step="0.1" value="0" /><output
+                  id="oMsgStart"
+                  >0.0</output
+                >
+              </div>
+            </div>
+            <div>
+              <label class="f">Length (s)</label>
+              <div class="rng">
+                <input type="range" id="msgLen" min="5" max="45" step="0.5" value="20" /><output id="oMsgLen"
+                  >20</output
+                >
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <div><label class="f">Label</label><input type="text" id="wordLabel" value="THE WORD" /></div>
+            <div>
+              <label class="f">Minister</label><input type="text" id="minister" placeholder="Pastor ..." />
+            </div>
+          </div>
+          <label class="f">Message title</label
+          ><input type="text" id="msgTitle" placeholder="e.g. Grace for the Race" />
+          <label class="chk"
+            ><input type="checkbox" id="showWave" checked /> Show voice waveform during the word</label
+          >
+        </section>
+
+        <section class="card">
+          <h2><b>3</b>Music &amp; sound design</h2>
+          <p class="hint">
+            Download an instrumental from Pixabay (free to use) and add it here. Cuts lock to its beat. With
+            no track, a built-in gospel-pop beat is generated for you.
+          </p>
+          <div class="chips">
+            <a href="https://pixabay.com/music/search/worship/" target="_blank" rel="noopener">Worship</a>
+            <a href="https://pixabay.com/music/search/gospel/" target="_blank" rel="noopener">Gospel</a>
+            <a href="https://pixabay.com/music/search/afrobeat/" target="_blank" rel="noopener">Afrobeat</a>
+            <a href="https://pixabay.com/music/search/uplifting/" target="_blank" rel="noopener">Uplifting</a>
+            <a
+              href="https://pixabay.com/music/search/cinematic%20inspirational/"
+              target="_blank"
+              rel="noopener"
+              >Cinematic</a
+            >
+            <a href="https://pixabay.com/sound-effects/" target="_blank" rel="noopener">Extra SFX</a>
+          </div>
+          <label class="drop" style="margin-top: 12px"
+            >Tap to add the music track<input type="file" id="inMusic" accept="audio/*"
+          /></label>
+          <div id="musicFile"></div>
+          <div class="row">
+            <div>
+              <label class="f">Tempo (BPM)</label
+              ><input type="number" id="bpm" min="60" max="180" step="0.1" value="105" />
+            </div>
+            <div>
+              <label class="f">Start music at (s)</label
+              ><input type="number" id="musicStart" min="0" step="0.1" value="0" />
+            </div>
+          </div>
+          <label class="f">Music level</label>
+          <div class="rng">
+            <input type="range" id="musicVol" min="0" max="1" step="0.01" value="0.7" /><output id="oMusicVol"
+              >70%</output
+            >
+          </div>
+          <label class="f">Sound design (your SFX pack: impacts, sub drops, swooshes, shutter)</label>
+          <div class="rng">
+            <input type="range" id="sfxVol" min="0" max="1" step="0.01" value="0.75" /><output id="oSfxVol"
+              >75%</output
+            >
+          </div>
+          <label class="f">Voice level</label>
+          <div class="rng">
+            <input type="range" id="voiceVol" min="0" max="1.5" step="0.01" value="1" /><output id="oVoiceVol"
+              >100%</output
+            >
+          </div>
+        </section>
+
+        <section class="card">
+          <h2><b>4</b>Branding &amp; closing screen</h2>
+          <div class="row">
+            <div>
+              <label class="f">Social handle</label><input type="text" id="handle" value="@yourchurch" />
+            </div>
+            <div>
+              <label class="f">Outro text</label
+              ><input type="text" id="outroText" value="SEE YOU NEXT WEEK" />
+            </div>
+          </div>
+          <label class="f">Closing screen details (one per line)</label>
+          <textarea id="details">
+Sundays · 8:00 AM
+Wednesdays · 6:00 PM
+Your venue address
+yourchurch.org</textarea>
+          <label class="drop" style="margin-top: 12px"
+            >Add logo (PNG, optional)<input type="file" id="inLogo" accept="image/*"
+          /></label>
+          <div id="logoFile"></div>
+          <div class="row">
+            <div>
+              <label class="f">Colour grade</label
+              ><select id="grade">
+                <option value="cool">Stage blue (like the original)</option>
+                <option value="warm">Golden warm</option>
+                <option value="film">Film contrast</option>
+                <option value="none">Natural</option>
+              </select>
+            </div>
+            <div>
+              <label class="f">Cut pace</label
+              ><select id="pace">
+                <option value="standard">Standard (≈1s per clip, photos longer)</option>
+                <option value="calm">Calm (≈2s per clip)</option>
+                <option value="fast">Fast (every beat, like the original)</option>
+              </select>
+            </div>
+            <div>
+              <label class="f">Export size</label
+              ><select id="res">
+                <option value="1080">1080 × 1920 (HD)</option>
+                <option value="720">720 × 1280 (faster)</option>
+              </select>
+            </div>
+          </div>
+          <label class="chk"
+            ><input type="checkbox" id="showWm" checked /> Show handle watermark on the video</label
+          >
+        </section>
+      </div>
+
+      <aside id="stage">
+        <div class="screen">
+          <canvas id="cv" width="1080" height="1920"></canvas>
+          <div class="ov" id="ov">Add a few clips or photos to see the preview.</div>
+        </div>
+        <div class="tl" id="tl"><span class="ph" id="ph"></span></div>
+        <div class="meta"><span id="tNow">0:00</span><span id="tTot">0:00</span></div>
+        <div class="acts">
+          <button class="btn" id="bPlay" disabled>▶ Preview</button>
+          <button class="btn hot" id="bRender" disabled>● Render video</button>
+        </div>
+        <div class="bar" id="bar"><i></i></div>
+        <div id="status"></div>
+        <div id="result">
+          <video id="outVid" controls playsinline></video>
+          <div class="acts" style="grid-template-columns: 1fr">
+            <button class="btn pri" id="bDl">⬇ Download video</button>
+          </div>
+        </div>
+        <p class="note">
+          Rendering runs in real time, so a 45-second reel takes about 45 seconds. Keep this tab open and on
+          screen while it renders. Chrome or Edge on a computer is fastest. iPhone videos in HEVC play in
+          Safari, and in Chrome on most newer computers.
+        </p>
+      </aside>
+    </main>
+
+    <script src="src/app.js"></script>
+  </body>
+</html>

@@ -1,9 +1,11 @@
+import { deleteSessionCascade } from '../services/deletion.service.js';
 import { Session } from '../models/Session.model.js';
 import { TranscriptSegment } from '../models/TranscriptSegment.model.js';
 import { Quote } from '../models/Quote.model.js';
 import { Insight } from '../models/Insight.model.js';
 import { ChatMessage } from '../models/ChatMessage.model.js';
-import { generateSummary, generateCarousel, answerSessionQuestion } from '../services/openrouter.service.js';
+import { generateCarousel, answerSessionQuestion, matchPointScriptures } from '../services/openrouter.service.js';
+import { generateSummaryWithRetry } from '../services/sessionSummary.service.js';
 import { getAnalysis, stopAnalysis } from '../services/analysis.service.js';
 import { finalizeRecording } from '../services/audioRecording.service.js';
 
@@ -22,6 +24,21 @@ export async function listSessionsForService(req, res) {
   const { id: serviceId } = req.params;
   const sessions = await Session.find({ service: serviceId }).sort({ createdAt: -1 }).limit(200);
   res.json(sessions);
+}
+
+export async function deleteSession(req, res) {
+  const ok = await deleteSessionCascade(req.params.id);
+  if (!ok) return res.status(404).json({ error: 'session not found' });
+  res.json({ ok: true });
+}
+
+// Renames a session (its title).
+export async function updateSession(req, res) {
+  const title = String(req.body?.title ?? '').trim().slice(0, 200);
+  if (!title) return res.status(400).json({ error: 'A session needs a name.' });
+  const session = await Session.findByIdAndUpdate(req.params.id, { title }, { new: true });
+  if (!session) return res.status(404).json({ error: 'session not found' });
+  res.json(session);
 }
 
 export async function getSession(req, res) {
@@ -55,7 +72,7 @@ export async function endSession(req, res) {
   session.endedAt = new Date();
 
   if (fullTranscript.trim().length > 0) {
-    const summary = await generateSummary({ fullText: fullTranscript });
+    const summary = await generateSummaryWithRetry(fullTranscript);
     if (summary) {
       session.summary = summary;
       const carousel = await generateCarousel({ summary });
@@ -117,4 +134,17 @@ export async function postChatMessage(req, res) {
   });
 
   res.status(201).json({ userMessage, assistantMessage });
+}
+
+// Suggests the scripture each teaching point rests on, matched against the verses the preacher
+// referenced in this session. Returns one reference (or "") per point.
+export async function pointScriptures(req, res) {
+  const { id } = req.params;
+  const points = Array.isArray(req.body?.points) ? req.body.points.map((p) => String(p).slice(0, 400)).slice(0, 30) : [];
+  if (points.length === 0) return res.json({ refs: [] });
+  const session = await Session.findById(id);
+  if (!session) return res.status(404).json({ error: 'session not found' });
+  const insights = await Insight.find({ session: id, type: 'scripture' });
+  const candidates = [...new Set([...(session.summary?.scriptures ?? []), ...insights.map((i) => (i.reference ? `${i.reference} - ${i.text}`.slice(0, 160) : i.text.slice(0, 160)))])].slice(0, 60);
+  res.json({ refs: await matchPointScriptures({ points, candidates }) });
 }
