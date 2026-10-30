@@ -32,7 +32,9 @@ export async function rolesFor(user) {
   return roles;
 }
 
-// The roles a person effectively has (admins have all of them).
+// The roles a person effectively has (admins have all of them). Everyone on the team is at least a Presenter: Present, Image
+// Studio, the calendar, tasks and chat - with their changes kept on their own device until an admin approves them.
+// Rosters and standing roles add the rest (design, audio, ...).
 export async function effectiveRoles(user) {
-  return user.isAdmin ? ['presenter', 'design', 'audio', 'manager', 'social'] : rolesFor(user);
+  return user.isAdmin ? ['presenter', 'design', 'audio', 'manager', 'social'] : [...new Set(['presenter', ...(await rolesFor(user))])];
 }
