@@ -36,6 +36,7 @@ export interface CallSession {
 interface CallCtx {
   calls: Record<string, CallInfo>; // live calls in the rooms you're in, by room id
   ready: boolean; // the first look at which calls are live has come back
+  refreshCalls: () => Promise<Record<string, CallInfo> | null>; // look again, e.g. before offering to join from a link
   session: CallSession | null; // the call you're in right now
   join: (roomId: string, roomName: string) => Promise<string | null>; // resolves to an error message, or null
   leave: () => void;
@@ -45,7 +46,7 @@ interface CallCtx {
   setMinimized: (v: boolean) => void;
 }
 const noop = async () => null;
-const Ctx = createContext<CallCtx>({ calls: {}, ready: false, session: null, join: noop, leave: () => {}, endForAll: () => {}, toggleMic: () => {}, toggleCam: noop, setMinimized: () => {} });
+const Ctx = createContext<CallCtx>({ calls: {}, ready: false, refreshCalls: async () => null, session: null, join: noop, leave: () => {}, endForAll: () => {}, toggleMic: () => {}, toggleCam: noop, setMinimized: () => {} });
 export const useCall = () => useContext(Ctx);
 
 interface Peer {
@@ -89,6 +90,17 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   // ---- the list of live calls (for the banners) ----
+  // Asked for again whenever it might be out of date: an installed app stays open for days and sleeps, and a socket that
+  // dropped and came back has missed any "call started" in between.
+  const refreshCalls = useCallback(async () => {
+    try {
+      const map = Object.fromEntries((await liveCalls()).map((c) => [c.roomId, c]));
+      setCalls(map);
+      return map;
+    } catch {
+      return null;
+    }
+  }, []);
   useEffect(() => {
     if (!user) return;
     liveCalls()
@@ -98,16 +110,28 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     const socket = getSocket();
     const upsert = (d: { roomId: string; call: CallInfo | null }) => setCalls((c) => (d.call ? { ...c, [d.roomId]: d.call } : Object.fromEntries(Object.entries(c).filter(([k]) => k !== d.roomId))));
     const ended = (d: { roomId: string }) => setCalls((c) => Object.fromEntries(Object.entries(c).filter(([k]) => k !== d.roomId)));
+    const resync = () => void refreshCalls();
+    const onVisible = () => document.visibilityState === "visible" && resync();
     socket.on("call:started", upsert);
     socket.on("call:update", upsert);
     socket.on("call:ended", ended);
+    socket.on("connect", resync); // also fires on every reconnect
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", resync);
+    window.addEventListener("online", resync);
+    const timer = setInterval(resync, 60_000);
     if (!socket.connected) socket.connect();
     return () => {
       socket.off("call:started", upsert);
       socket.off("call:update", upsert);
       socket.off("call:ended", ended);
+      socket.off("connect", resync);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", resync);
+      window.removeEventListener("online", resync);
+      clearInterval(timer);
     };
-  }, [user]);
+  }, [user, refreshCalls]);
 
   // ---- building what the screen shows ----
   const publish = useCallback(() => {
@@ -430,7 +454,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("pagehide", bye);
   }, []);
 
-  const value = useMemo(() => ({ calls, ready, session, join, leave, endForAll, toggleMic, toggleCam, setMinimized }), [calls, ready, session, join, leave, endForAll, toggleMic, toggleCam, setMinimized]);
+  const value = useMemo(() => ({ calls, ready, refreshCalls, session, join, leave, endForAll, toggleMic, toggleCam, setMinimized }), [calls, ready, refreshCalls, session, join, leave, endForAll, toggleMic, toggleCam, setMinimized]);
   return (
     <Ctx.Provider value={value}>
       {children}

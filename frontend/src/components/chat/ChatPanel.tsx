@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, BellRing, CalendarClock, Check, Hash, Lock, LogOut, Pencil, Phone, PhoneCall, Send, Smile, SmilePlus, Sticker as StickerIcon, Trash2, Users, X } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { REACTION_EMOJI, cancelCallRequest, cancelScheduledCall, deleteMessage, editMessage, joinRoom, leaveRoom, listScheduledCalls, pingCall, reactTo, requestRoomCall, scheduleCall, roomCall, roomMembers, roomMessages, sendMessage, sendSticker, sendVoice, startRoomCall, voiceUrl, type ChatMessage, type Person, type Room } from "@/lib/chat";
-import { flashElement, queryParam } from "@/lib/deeplink";
+import { flashElement } from "@/lib/deeplink";
+import { useSearchParams } from "next/navigation";
 import { rememberSticker } from "@/lib/stickers";
 import { getSocket } from "@/lib/socket";
 import { useChat } from "./ChatProvider";
@@ -98,8 +99,7 @@ export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) 
   const [callDialog, setCallDialog] = useState(false); // the admin's start-now / schedule dialog
   const [pingNote, setPingNote] = useState("");
   const [joinPrompt, setJoinPrompt] = useState<{ ended: boolean } | null>(null); // from a ?call= link
-  const { calls, ready: callsReady, session, join: joinCallSession, setMinimized } = useCall();
-  const deepDone = useRef("");
+  const { calls, ready: callsReady, refreshCalls, session, join: joinCallSession, setMinimized } = useCall();
   const bottom = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -150,18 +150,30 @@ export function ChatPanel({ initialRoomId }: { initialRoomId?: string | null }) 
     };
   }, [activeId, room?.joined]);
 
-  // Deep links: ?msg=<id> scrolls to that message and flashes it; ?call=<id> offers to join that call.
+  // Deep links: ?msg=<id> scrolls to that message and flashes it; ?call=<id> offers to join that call. They follow the URL,
+  // so tapping a notification while this room is already open works too (it used to run only once per room).
+  const params = useSearchParams();
+  const msgParam = params.get("msg");
+  const callParam = params.get("call");
+  const msgDone = useRef("");
+  const callDone = useRef("");
+  const hasMsgs = msgs.length > 0;
   useEffect(() => {
-    if (!activeId || !room?.joined || msgs.length === 0 || !callsReady) return;
-    const msg = queryParam("msg");
-    const call = queryParam("call");
-    const key = `${activeId}:${msg}:${call}`;
-    if (deepDone.current === key) return;
-    deepDone.current = key;
-    if (msg) flashElement(`msg-${msg}`);
-    if (call) setTimeout(() => setJoinPrompt({ ended: !calls[activeId] }), 0);
+    if (!msgParam || !activeId || !room?.joined || !hasMsgs) return;
+    const key = `${activeId}:${msgParam}`;
+    if (msgDone.current === key) return;
+    msgDone.current = key;
+    flashElement(`msg-${msgParam}`);
+  }, [msgParam, activeId, room?.joined, hasMsgs]);
+  useEffect(() => {
+    if (!callParam || !activeId || !room?.joined || !callsReady) return;
+    const key = `${activeId}:${callParam}`;
+    if (callDone.current === key) return;
+    callDone.current = key;
+    // Look again first: the list on screen may be stale (the app was asleep), and "has ended" must be true.
+    void refreshCalls().then((fresh) => setJoinPrompt({ ended: !(fresh ?? calls)[activeId] }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, room?.joined, msgs.length, callsReady]);
+  }, [callParam, activeId, room?.joined, callsReady]);
 
   // Live messages and reactions for the open room.
   useEffect(

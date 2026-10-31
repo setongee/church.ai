@@ -10,6 +10,7 @@ import { useIsApp } from "@/lib/downloads";
 import { ThemeToggle } from "./ThemeToggle";
 import { useAuth } from "./AuthProvider";
 import { useChat } from "./chat/ChatProvider";
+import { useCall } from "./chat/CallProvider";
 import { NotificationBell } from "./notify/NotificationBell";
 import { canOpen } from "@/lib/auth";
 
@@ -79,6 +80,9 @@ export function NavBar() {
   const barRef = useRef<HTMLDivElement | null>(null);
   const { user, logout, kiosk } = useAuth();
   const { unread, mentioned } = useChat();
+  const { calls, session } = useCall();
+  // A call going on that you could join (and aren't already in): shown on every page, so it's never missed.
+  const joinable = Object.values(calls).filter((c) => c.roomId !== session?.roomId);
   const { canPrompt, iosHelp, install } = useInstall();
   const isApp = useIsApp();
   const [drawer, setDrawer] = useState(false);
@@ -176,6 +180,20 @@ export function NavBar() {
           <Link href="/download" title="Download the app" aria-label="Download the app" className={`hidden h-10 shrink-0 items-center gap-2 rounded-full px-2.5 text-sm font-semibold xl:inline-flex ${pathname.startsWith("/download") ? "bg-orange-50 text-orange-700" : "text-neutral-600 hover:bg-neutral-100 hover:text-orange-600"}`}>
             <Download size={18} />
             <span className="hidden 2xl:inline">Download app</span>
+          </Link>
+        )}
+        {joinable[0] && (
+          <Link
+            href={`/chat?room=${joinable[0].roomId}&call=${joinable[0].id}`}
+            title={`${joinable[0].title || `${joinable[0].host.name}’s call`} is live. Tap to join.`}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full bg-[#16a34a] px-3.5 text-sm font-semibold text-[#ffffff] hover:bg-[#15803d]"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#ffffff] opacity-70" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#ffffff]" />
+            </span>
+            <span className="hidden sm:inline">Join call{joinable.length > 1 ? ` (${joinable.length})` : ""}</span>
+            <span className="sm:hidden">Join</span>
           </Link>
         )}
         <NotificationBell />
