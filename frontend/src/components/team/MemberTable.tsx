@@ -8,7 +8,7 @@ import { listServices } from "@/lib/api";
 import { listSprints, listTasks, updateTask, type Task } from "@/lib/board";
 import { roleLabel, TEAM_ROLES, type TeamRole } from "@/lib/auth";
 import { listRoles } from "@/lib/roles";
-import { assignMemberToRoster, deleteUser, memberRoster, signOutUser, updateUser, type TeamUser } from "@/lib/team";
+import { assignMemberToRoster, deleteUser, getRoster, memberRoster, signOutUser, updateUser, type TeamUser } from "@/lib/team";
 
 const field = "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-neutral-900";
 const ghost = "rounded-xl border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50";
@@ -204,19 +204,28 @@ function AssignRosterDialog({ user, run, onClose }: RunProps & { user: TeamUser 
   const { data: services } = useCached(["services"], listServices);
   const [serviceId, setServiceId] = useState("");
   const [role, setRole] = useState<TeamRole>("presenter");
+  const [sessionId, setSessionId] = useState(""); // "" = the whole service
+  // The service's sessions (Praise & Worship, Word, ...), for choosing which part this job is for.
+  const { data: roster } = useCached(["roster", serviceId], () => getRoster(serviceId), { enabled: Boolean(serviceId) });
+  const sessions = serviceId ? (roster?.sessions ?? []) : [];
   return (
     <Modal title={`Assign ${user.name} to a service`} onClose={onClose}>
       <div className="space-y-3">
-        <select value={serviceId} onChange={(e) => setServiceId(e.target.value)} className={field}>
+        <select value={serviceId} onChange={(e) => { setServiceId(e.target.value); setSessionId(""); }} className={field}>
           <option value="">Choose a service…</option>
           {(services ?? []).map((s) => <option key={s._id} value={s._id}>{s.name}{s.date ? ` — ${day(s.date)}` : ""}</option>)}
         </select>
-        <select value={role} onChange={(e) => setRole(e.target.value as TeamRole)} className={field}>
+        <select value={sessionId} onChange={(e) => setSessionId(e.target.value)} disabled={!serviceId} className={field} aria-label="Which part of the service">
+          <option value="">Whole service{sessions.length ? " (every session)" : ""}</option>
+          {sessions.map((x) => <option key={x.id} value={x.id}>{x.name} only</option>)}
+        </select>
+        <select value={role} onChange={(e) => setRole(e.target.value as TeamRole)} className={field} aria-label="Their job">
           {TEAM_ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
         </select>
+        {serviceId && !sessions.length && <p className="text-xs text-neutral-400">This service has no sessions yet. Add some (like Praise &amp; Worship, Word) on its Roster tab to give jobs for one part of it.</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className={ghost}>Cancel</button>
-          <button disabled={!serviceId} onClick={async () => { await run(() => assignMemberToRoster(user._id, { serviceId, role })); onClose(); }} className={solid}>Assign</button>
+          <button disabled={!serviceId} onClick={async () => { await run(() => assignMemberToRoster(user._id, { serviceId, role, sessionId: sessionId || null })); onClose(); }} className={solid}>Assign</button>
         </div>
       </div>
     </Modal>
@@ -280,7 +289,7 @@ function ViewRosterDialog({ user, onClose }: { user: TeamUser; onClose: () => vo
         {rows.map((r) => (
           <li key={r.serviceId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-neutral-50 px-3.5 py-3">
             <span><span className="block text-sm font-semibold text-neutral-900">{r.serviceName}</span><span className="block text-xs text-neutral-500">{day(r.date)}</span></span>
-            <span className="flex flex-wrap gap-1">{r.roles.map((x) => <span key={x} className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700">{roleLabel(x)}</span>)}</span>
+            <span className="flex flex-wrap gap-1">{r.items.map((it, i) => <span key={i} className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700">{roleLabel(it.role)}{it.session ? ` · ${it.session}` : ""}</span>)}</span>
           </li>
         ))}
         {data && !rows.length && <li className="py-8 text-center text-sm text-neutral-400">{tab === "upcoming" ? "Not on any current roster." : "No past services yet."}</li>}

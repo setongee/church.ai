@@ -37,21 +37,28 @@ export const updateUser = (id: string, patch: Partial<Pick<TeamUser, "name" | "e
 export const signOutUser = (id: string) => req<{ ok: boolean }>(`/api/users/${id}/sign-out`, { method: "POST" });
 export const deleteUser = (id: string) => req<{ ok: boolean }>(`/api/users/${id}`, { method: "DELETE" });
 
+export interface RosterSession {
+  id: string; // a real id, or a temporary one (starting "new_") for a session added in the editor and not saved yet
+  name: string;
+}
 export interface RosterAssignment {
   role: TeamRole;
+  sessionId: string | null; // null = the whole service
   notified: boolean;
   user: { _id: string; name: string; email: string };
 }
 export interface Roster {
+  sessions: RosterSession[];
   assignments: RosterAssignment[];
   note: string;
   notifiedAt: string | null;
   emailConfigured: boolean;
 }
 export const getRoster = (serviceId: string) => req<Roster>(`/api/services/${serviceId}/roster`);
-export const saveRoster = (serviceId: string, input: { assignments: { role: TeamRole; userId: string }[]; note: string }) => req<Roster>(`/api/services/${serviceId}/roster`, { method: "PUT", body: JSON.stringify(input) });
+export const saveRoster = (serviceId: string, input: { sessions: RosterSession[]; assignments: { role: TeamRole; userId: string; sessionId: string | null }[]; note: string }) => req<Roster>(`/api/services/${serviceId}/roster`, { method: "PUT", body: JSON.stringify(input) });
 export const notifyRoster = (serviceId: string, all = false) => req<{ results: { name: string; email: string; ok: boolean; error?: string }[]; notifiedAt: string | null }>(`/api/services/${serviceId}/roster/notify`, { method: "POST", body: JSON.stringify({ all }) });
-export type Assignment = { serviceId: string; serviceName: string; date: string | null; roles: TeamRole[]; team?: { role: TeamRole; names: string[] }[] };
+// `items` says which session each job is for (session null = the whole service); `team` is the whole roster grouped the same way.
+export type Assignment = { serviceId: string; serviceName: string; date: string | null; roles: TeamRole[]; items: { role: TeamRole; session: string | null }[]; team?: { role: TeamRole; session: string | null; names: string[] }[] };
 export const myAssignments = () => req<Assignment[]>("/api/users/me/assignments");
 
 export interface MemberRosterRow {
@@ -59,6 +66,7 @@ export interface MemberRosterRow {
   serviceName: string;
   date: string | null;
   roles: TeamRole[];
+  items: { role: TeamRole; session: string | null }[];
 }
 export const memberRoster = (id: string) => req<{ upcoming: MemberRosterRow[]; history: MemberRosterRow[] }>(`/api/users/${id}/roster`);
-export const assignMemberToRoster = (id: string, input: { serviceId: string; role: TeamRole }) => req<{ ok: boolean }>(`/api/users/${id}/roster`, { method: "POST", body: JSON.stringify(input) });
+export const assignMemberToRoster = (id: string, input: { serviceId: string; role: TeamRole; sessionId?: string | null }) => req<{ ok: boolean }>(`/api/users/${id}/roster`, { method: "POST", body: JSON.stringify(input) });

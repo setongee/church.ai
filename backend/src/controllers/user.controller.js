@@ -156,9 +156,10 @@ export async function userRosters(req, res) {
   if (!user) return res.status(404).json({ error: 'user not found' });
   const all = await assignmentsFor(user._id);
   const byService = new Map();
-  for (const { service, role } of all) {
-    const e = byService.get(String(service._id)) ?? { serviceId: service._id, serviceName: service.name, date: service.date, roles: [] };
-    e.roles.push(role);
+  for (const { service, role, session } of all) {
+    const e = byService.get(String(service._id)) ?? { serviceId: service._id, serviceName: service.name, date: service.date, roles: [], items: [] };
+    if (!e.roles.includes(role)) e.roles.push(role);
+    e.items.push({ role, session: session?.name ?? null });
     byService.set(String(service._id), e);
   }
   const current = new Set((await assignmentsFor(user._id, { onlyCurrent: true })).map((a) => String(a.service._id)));
@@ -166,19 +167,25 @@ export async function userRosters(req, res) {
   res.json({ upcoming: rows.filter((r) => current.has(String(r.serviceId))), history: rows.filter((r) => !current.has(String(r.serviceId))) });
 }
 
-// Puts a person on a service's roster in one role (keeps everyone else as they are).
+// Puts a person on a service's roster in one job, for the whole service or one of its sessions (keeps everyone else as they are).
 export async function assignRoster(req, res) {
   const user = await User.findById(req.params.id);
   if (!user || !user.active) return res.status(404).json({ error: 'user not found' });
-  const { serviceId, role } = req.body || {};
+  const { serviceId, role, sessionId } = req.body || {};
   if (!ROLES.includes(role)) return res.status(400).json({ error: 'Pick a role.' });
   const service = await Service.findById(serviceId);
   if (!service) return res.status(404).json({ error: 'service not found' });
   const roster = (await Roster.findOne({ service: service._id })) ?? new Roster({ service: service._id, assignments: [] });
-  if (roster.assignments.some((a) => String(a.user) === String(user._id) && a.role === role)) return res.status(409).json({ error: 'They already have that role on this service.' });
-  roster.assignments.push({ role, user: user._id });
+  let session = null;
+  if (sessionId && sessionId !== 'all') {
+    session = roster.sessions.find((x) => String(x._id) === String(sessionId))?._id ?? null;
+    if (!session) return res.status(400).json({ error: 'That session isn’t on this service any more.' });
+  }
+  if (roster.assignments.some((a) => String(a.user) === String(user._id) && a.role === role && String(a.session ?? '') === String(session ?? ''))) return res.status(409).json({ error: 'They already have that job there.' });
+  roster.assignments.push({ role, user: user._id, session });
+  const where = session ? ` (${roster.sessions.find((x) => String(x._id) === String(session)).name})` : '';
   await roster.save();
   clearAccessCache();
-  await notify([user._id], { type: 'roster', title: `You're rostered for ${service.name}`, body: `Your role: ${role}`, href: `/dashboard?service=${service._id}` });
+  await notify([user._id], { type: 'roster', title: `You're rostered for ${service.name}`, body: `Your job: ${role}${where}`, href: `/dashboard?service=${service._id}` });
   res.json({ ok: true });
 }

@@ -16,6 +16,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { useCached } from "@/lib/queries";
 import type { ServiceDetail } from "@/lib/types";
 import { RosterCard } from "@/components/RosterCard";
+import { StartServiceButton } from "@/components/LiveServiceCard";
 import { Modal } from "@/components/present/ui";
 import { Pencil, Plus } from "lucide-react";
 
@@ -140,6 +141,8 @@ export default function ServiceDetailPage({
             </button>
           )}
         </h1>
+        <div className="flex flex-wrap items-center gap-2">
+        {canRename && <StartServiceButton serviceId={id} serviceName={service.name} />}
         {admin && (
           <button
             type="button"
@@ -152,6 +155,7 @@ export default function ServiceDetailPage({
             Delete service
           </button>
         )}
+        </div>
       </div>
       <p className="mt-2 text-sm text-neutral-500">
         {service.date

@@ -54,7 +54,7 @@ export default function ProfilePage() {
                     <p className="text-sm font-semibold text-neutral-900">{a.serviceName}</p>
                     <p className="text-xs text-neutral-500">{fmt(a.date!)}</p>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">{a.roles.map((r) => <span key={r} className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">{roleLabel(r)}</span>)}</div>
+                  <div className="flex flex-wrap gap-1.5">{a.items.map((it, i) => <span key={i} className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">{roleLabel(it.role)}{it.session ? ` · ${it.session}` : ""}</span>)}</div>
                 </li>
               ))}
             </ul>

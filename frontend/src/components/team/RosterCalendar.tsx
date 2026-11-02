@@ -133,23 +133,36 @@ export function RosterCalendar() {
               <p className="text-xs font-bold uppercase tracking-widest text-orange-600">{selectedService.date && dayKey(selectedService.date) < today ? "Done" : "Upcoming"}</p>
               <h3 className="mt-1 text-lg font-semibold text-neutral-900">{selectedService.name}</h3>
               <p className="text-sm text-neutral-500">{selectedService.date ? fmtLong(selectedService.date) : "No date set"}</p>
-              <div className="mt-5 space-y-4">
-                {TEAM_ROLES.map((r) => {
-                  const people = (selectedRoster?.assignments ?? []).filter((a) => a.role === r.id);
+              <div className="mt-5 space-y-5">
+                {/* The whole service first, then each session (only the jobs somebody has) */}
+                {[{ id: null as string | null, title: selectedRoster?.sessions.length ? "Whole service" : "" }, ...(selectedRoster?.sessions ?? []).map((x) => ({ id: x.id as string | null, title: x.name }))].map((g) => {
+                  const jobs = TEAM_ROLES.map((r) => ({ r, people: (selectedRoster?.assignments ?? []).filter((a) => a.role === r.id && (a.sessionId ?? null) === g.id) }));
+                  const any = jobs.some((j) => j.people.length);
+                  if (g.id && !any) return (
+                    <div key={g.id}>
+                      <p className="mb-1 text-xs font-bold uppercase tracking-wider text-orange-600">{g.title}</p>
+                      <p className="text-sm text-neutral-300">Nobody yet</p>
+                    </div>
+                  );
                   return (
-                    <div key={r.id}>
-                      <p className="mb-1.5 text-xs font-semibold text-neutral-500">{r.label}</p>
-                      {people.length === 0 ? (
-                        <p className="text-sm text-neutral-300">Nobody</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {people.map((a) => (
-                            <span key={a.user._id} className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">
-                              {a.user.name}
-                            </span>
-                          ))}
+                    <div key={g.id ?? "all"} className="space-y-3">
+                      {g.title && <p className="text-xs font-bold uppercase tracking-wider text-orange-600">{g.title}</p>}
+                      {jobs.filter((j) => !g.id || j.people.length).map(({ r, people }) => (
+                        <div key={r.id}>
+                          <p className="mb-1.5 text-xs font-semibold text-neutral-500">{r.label}</p>
+                          {people.length === 0 ? (
+                            <p className="text-sm text-neutral-300">Nobody</p>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5">
+                              {people.map((a) => (
+                                <span key={a.user._id} className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">
+                                  {a.user.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      )}
+                      ))}
                     </div>
                   );
                 })}

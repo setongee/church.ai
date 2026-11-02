@@ -38,6 +38,7 @@ export interface Recent {
 
 export interface ListenState {
   status: ListenStatus;
+  reconnecting: boolean; // the connection dropped and is coming back; listening carries on
   engine: EngineId;
   mode: ListenMode;
   deviceId: string;
@@ -78,7 +79,7 @@ function save() {
 
 // ---- the store ------------------------------------------------------------------------------------------------------
 
-const initial = (): ListenState => ({ status: "off", engine: "server", mode: "ask", deviceId: "", aiParaphrase: true, aiNote: "", transcript: "", progress: 0, progressLabel: "", error: "", suggestions: [], recent: [], heardOpen: false });
+const initial = (): ListenState => ({ status: "off", reconnecting: false, engine: "server", mode: "ask", deviceId: "", aiParaphrase: true, aiNote: "", transcript: "", progress: 0, progressLabel: "", error: "", suggestions: [], recent: [], heardOpen: false });
 let state: ListenState = initial();
 let hydrated = false;
 const listeners = new Set<() => void>();
@@ -474,6 +475,33 @@ export function setDevice(deviceId: string) {
   }
 }
 
+// ---- carrying on after a refresh ----------------------------------------------------------------------------------------
+
+// While it is on, the time is noted every few seconds. If the page is refreshed (or the app reopened) soon after, listening
+// starts again by itself: the microphone is asked for without a click, and if the browser won't allow that the error says so.
+const ON_KEY = "present-listen-on";
+let beat: ReturnType<typeof setInterval> | null = null;
+function remember(on: boolean) {
+  if (beat) clearInterval(beat);
+  beat = null;
+  try {
+    if (!on) return localStorage.removeItem(ON_KEY);
+    const note = () => localStorage.setItem(ON_KEY, String(Date.now()));
+    note();
+    beat = setInterval(note, 5000);
+  } catch {}
+}
+let resumed = false;
+export function resumeListening() {
+  if (resumed || typeof window === "undefined") return;
+  resumed = true;
+  try {
+    const at = Number(localStorage.getItem(ON_KEY));
+    if (at && Date.now() - at < 3 * 60_000 && state.status === "off") void start();
+    else localStorage.removeItem(ON_KEY);
+  } catch {}
+}
+
 export async function start() {
   hydrate();
   if (state.status !== "off" && state.status !== "error") return;
@@ -488,11 +516,16 @@ export async function start() {
 
   const hooks = {
     onTranscript,
-    onReady: () => set({ status: "listening", progress: 0, progressLabel: "" }),
+    onReady: () => {
+      set({ status: "listening", reconnecting: false, progress: 0, progressLabel: "" });
+      remember(true);
+    },
+    onStatus: (reconnecting: boolean) => state.status !== "off" && set({ reconnecting }),
     onError: (message: string, fatal?: boolean) => {
       if (fatal) {
         stopEngine();
-        set({ status: "error", error: message, transcript: "" });
+        set({ status: "error", reconnecting: false, error: message, transcript: "" });
+        remember(false);
       }
     },
     onProgress: (pct: number, label: string) => set({ status: "loading", progress: pct, progressLabel: label }),
@@ -513,7 +546,8 @@ export function stop() {
   aiQueue.length = 0;
   stopEngine();
   spots.clear();
-  set({ status: "off", transcript: "", progress: 0, progressLabel: "", error: "" });
+  set({ status: "off", reconnecting: false, transcript: "", progress: 0, progressLabel: "", error: "" });
+  remember(false);
 }
 
 export function setHeardOpen(heardOpen: boolean) {

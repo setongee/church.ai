@@ -37,9 +37,50 @@ export function createDeepgramLiveConnection({ onOpen, onTranscript, onError, on
     headers: { Authorization: `Token ${env.deepgramApiKey}` },
   });
 
+  // A connection that can't be opened must fail loudly (and quickly) instead of hanging the stream waiting for it.
+  const openTimer = setTimeout(() => ws.readyState === WebSocket.CONNECTING && ws.terminate(), 10_000);
+  let keepTimer = null;
+  let pingTimer = null;
+  let lastSendAt = Date.now();
+  let lastPongAt = Date.now();
+  const stopTimers = () => {
+    clearTimeout(openTimer);
+    clearInterval(keepTimer);
+    clearInterval(pingTimer);
+  };
+
   ws.on('open', () => {
     console.log('[deepgram] connection open');
+    clearTimeout(openTimer);
+    lastSendAt = lastPongAt = Date.now();
+    // Deepgram drops a link that hears nothing for ~10 s (a pause in the room, or audio held up by a network blip):
+    // tell it we're still here. And a link that has silently died (no pong) is cut so the caller can reconnect.
+    keepTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN && Date.now() - lastSendAt > 3000) {
+        try {
+          ws.send(JSON.stringify({ type: 'KeepAlive' }));
+        } catch {
+          // closing
+        }
+      }
+    }, 4000);
+    pingTimer = setInterval(() => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      if (Date.now() - lastPongAt > 20_000) {
+        console.warn('[deepgram] no answer for 20s, dropping the link');
+        ws.terminate();
+        return;
+      }
+      try {
+        ws.ping();
+      } catch {
+        // closing
+      }
+    }, 8000);
     onOpen?.();
+  });
+  ws.on('pong', () => {
+    lastPongAt = Date.now();
   });
 
   ws.on('message', (data) => {
@@ -74,13 +115,15 @@ export function createDeepgramLiveConnection({ onOpen, onTranscript, onError, on
   });
 
   ws.on('close', (code, reason) => {
+    stopTimers();
     console.log('[deepgram] connection closed', JSON.stringify({ code, reason: reason?.toString() }));
-    onClose?.();
+    onClose?.({ code, reason: reason?.toString() });
   });
 
   return {
     send(chunk) {
       if (ws.readyState === WebSocket.OPEN) {
+        lastSendAt = Date.now();
         ws.send(chunk);
       }
     },
@@ -96,6 +139,8 @@ export function createDeepgramLiveConnection({ onOpen, onTranscript, onError, on
         console.error('[deepgram] failed to send CloseStream', err);
       }
       ws.close();
+      // A link that never answers the close handshake is cut after a moment, so nothing is left dangling.
+      setTimeout(() => ws.readyState !== WebSocket.CLOSED && ws.terminate(), 3000).unref?.();
     },
   };
 }

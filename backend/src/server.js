@@ -25,6 +25,7 @@ import pushRoutes from "./routes/push.routes.js";
 import boardRoutes from "./routes/board.routes.js";
 import submissionRoutes from "./routes/submission.routes.js";
 import roleRoutes from "./routes/role.routes.js";
+import { liveNow } from "./controllers/live.controller.js";
 import { seedRoles } from "./models/Role.model.js";
 import { dashboard } from "./controllers/dashboard.controller.js";
 import { asyncHandler } from "./utils/asyncHandler.js";
@@ -113,6 +114,8 @@ const imageStudio = requireRole("design", "manager", "social", "presenter");
 // admins create, edit or delete a service itself (see service.routes.js).
 app.use("/api/sessions", readAnyWriteRole("manager", "design", "social"), sessionRoutes);
 app.use("/api/services", readAnyWriteRole("manager"), serviceRoutes);
+// The services that are live right now, for the dashboard (each person only gets the ones they are on, admins and managers all).
+app.get("/api/live", asyncHandler(liveNow));
 app.use("/api/quotes", readAnyWriteRole("manager", "design", "social"), quoteRoutes);
 // The brand (logo, theme) is readable by everyone signed in.
 app.use("/api/brand", (req, res, next) => (req.method === "GET" ? next() : readAnyWriteRole("design", "manager", "social")(req, res, next)), brandRoutes);

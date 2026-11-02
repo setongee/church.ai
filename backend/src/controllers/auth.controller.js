@@ -1,8 +1,9 @@
 import { User } from '../models/User.model.js';
 import { hashPassword, verifyPassword, hashToken, newToken } from '../services/password.service.js';
-import { disconnectUser } from '../services/realtime.service.js';
+import { disconnectUser, replaceSessions } from '../services/realtime.service.js';
 import { sessionCutoff, sessionIsActive } from '../middlewares/auth.js';
-import { effectiveRoles } from '../services/access.service.js';
+import { effectiveRoles, serviceModeSummary } from '../services/access.service.js';
+import { notify } from '../services/notification.service.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -19,7 +20,7 @@ export const publicUser = (u, roles = []) => ({
 });
 export const userView = async (u) => {
   await u.populate('appRole', 'name');
-  return publicUser(u, await effectiveRoles(u));
+  return { ...publicUser(u, await effectiveRoles(u)), serviceMode: await serviceModeSummary(u) };
 };
 
 // Slows down password guessing: 8 wrong tries per email+IP per 15 minutes.
@@ -32,12 +33,21 @@ function tooManyFails(key) {
 }
 const noteFail = (key) => fails.set(key, [...(fails.get(key) || []), Date.now()]);
 
-async function startSession(user, req) {
+// "Chrome on Mac", from the browser's own description of itself.
+export function deviceLabel(ua = '') {
+  const s = String(ua);
+  const browser = /Edg\//.test(s) ? 'Edge' : /OPR\/|Opera/.test(s) ? 'Opera' : /Electron\//.test(s) ? 'the desktop app' : /Chrome\/|CriOS/.test(s) ? 'Chrome' : /Firefox\/|FxiOS/.test(s) ? 'Firefox' : /Safari\//.test(s) ? 'Safari' : 'a browser';
+  const os = /iPhone/.test(s) ? 'iPhone' : /iPad/.test(s) ? 'iPad' : /Android/.test(s) ? 'Android' : /Windows/.test(s) ? 'Windows' : /Mac OS X|Macintosh/.test(s) ? 'Mac' : /CrOS/.test(s) ? 'Chromebook' : /Linux/.test(s) ? 'Linux' : '';
+  return os ? `${browser} on ${os}` : browser;
+}
+
+// `takeOver` signs in even if another device holds the session (that device is signed out by the caller).
+async function startSession(user, req, { takeOver = false } = {}) {
   const token = newToken();
   const now = new Date();
   // Only succeeds if nobody else holds a live session - two logins at once can't both win.
   const updated = await User.findOneAndUpdate(
-    { _id: user._id, $or: [{ sessionTokenHash: null }, { lastSeenAt: { $lt: sessionCutoff() } }] },
+    takeOver ? { _id: user._id } : { _id: user._id, $or: [{ sessionTokenHash: null }, { lastSeenAt: { $lt: sessionCutoff() } }] },
     { sessionTokenHash: hashToken(token), sessionStartedAt: now, lastSeenAt: now, sessionDevice: String(req.headers['user-agent'] || '').slice(0, 200) },
     { new: true }
   );
@@ -71,15 +81,27 @@ export async function login(req, res) {
     return res.status(401).json({ error: 'That email and password don’t match.' });
   }
   if (!user.active) return res.status(403).json({ error: 'This account has been turned off. Ask an admin.' });
-  if (sessionIsActive(user)) {
+  const other = sessionIsActive(user);
+  const takeOver = Boolean(req.body?.takeOver);
+  if (other && !takeOver) {
+    // Not signed in yet: the new device is told who has the session, and asked whether to sign them out.
     return res.status(409).json({
       code: 'ALREADY_SIGNED_IN',
-      error: 'You’re already signed in on another device. Log out there first, or ask an admin to sign you out.',
+      error: 'You’re signed in on another device.',
+      device: deviceLabel(user.sessionDevice),
+      lastSeenAt: user.lastSeenAt,
     });
   }
-  const s = await startSession(user, req);
-  if (!s) return res.status(409).json({ code: 'ALREADY_SIGNED_IN', error: 'You’re already signed in on another device. Log out there first, or ask an admin to sign you out.' });
+  const previous = { device: deviceLabel(user.sessionDevice), had: other };
+  const s = await startSession(user, req, { takeOver });
+  if (!s) return res.status(409).json({ code: 'ALREADY_SIGNED_IN', error: 'You’re signed in on another device.', device: previous.device });
   fails.delete(key);
+  if (previous.had) {
+    // The old device hears why it's being signed out (then its connections are closed), and the person is told on this one.
+    const now = deviceLabel(req.headers['user-agent']);
+    await replaceSessions(user._id, s.token, { device: now });
+    await notify([user._id], { type: 'account', title: 'You signed in on a new device', body: `${previous.device} was signed out. If that wasn’t you, change your password.`, href: '/settings' });
+  }
   res.json({ token: s.token, user: await userView(s.user) });
 }
 

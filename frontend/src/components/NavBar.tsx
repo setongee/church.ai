@@ -11,6 +11,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { useAuth } from "./AuthProvider";
 import { useChat } from "./chat/ChatProvider";
 import { useCall } from "./chat/CallProvider";
+import { StreamBanner } from "./StreamProvider";
 import { NotificationBell } from "./notify/NotificationBell";
 import { canOpen } from "@/lib/auth";
 
@@ -246,6 +247,7 @@ export function NavBar() {
           )}
         </div>
       </div>
+      <StreamBanner />
 
       {drawer &&
         createPortal(

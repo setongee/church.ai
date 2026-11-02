@@ -8,6 +8,7 @@ import { generateCarousel, answerSessionQuestion, matchPointScriptures } from '.
 import { generateSummaryWithRetry } from '../services/sessionSummary.service.js';
 import { getAnalysis, stopAnalysis } from '../services/analysis.service.js';
 import { finalizeRecording } from '../services/audioRecording.service.js';
+import { stopStream } from '../sockets/streamHandler.js';
 
 export async function createSessionForService(req, res) {
   const { id: serviceId } = req.params;
@@ -61,7 +62,9 @@ export async function endSession(req, res) {
   const session = await Session.findById(id);
   if (!session) return res.status(404).json({ error: 'session not found' });
 
+  // Anyone still streaming this session is told it has ended, and their stream is closed (its last recording segment is saved).
   const analysis = getAnalysis(id);
+  stopStream(id, 'ended');
   const fullTranscript =
     analysis?.getFullTranscript() ||
     (await TranscriptSegment.find({ session: id }).sort({ createdAt: 1 }))

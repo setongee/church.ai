@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Check, ChevronDown, Loader2, Mic, Square } from "lucide-react";
-import { engineInfo, setAiParaphrase, setDevice, setEngine, setMode, start, stop, useListen, type EngineId } from "@/lib/listen/store";
+import { engineInfo, resumeListening, setAiParaphrase, setDevice, setEngine, setMode, start, stop, useListen, type EngineId } from "@/lib/listen/store";
 
 // "Listen" for the Present header: hears the preacher and offers the scriptures it catches (see ListenSuggestions).
 export function ListenButton() {
@@ -11,6 +11,7 @@ export function ListenButton() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const box = useRef<HTMLDivElement>(null);
   const on = L.status !== "off" && L.status !== "error";
+  useEffect(() => resumeListening(), []); // after a refresh, pick up where it was
 
   useEffect(() => {
     if (!open) return;
@@ -47,7 +48,7 @@ export function ListenButton() {
       </span>
     </button>
   );
-  const label = L.status === "loading" ? (L.progress ? `Getting ready ${L.progress}%` : "Getting ready…") : L.status === "starting" ? "Starting…" : on ? "Listening" : "Listen";
+  const label = L.status === "loading" ? (L.progress ? `Getting ready ${L.progress}%` : "Getting ready…") : L.status === "starting" ? "Starting…" : on ? (L.reconnecting ? "Reconnecting…" : "Listening") : "Listen";
 
   return (
     <div ref={box} className="relative">

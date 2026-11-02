@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { ArrowLeft, Check, CheckCircle2, Loader2, RefreshCw, Sparkles, Trash2, Users, X } from "lucide-react";
 import { Avatar } from "@/components/notify/ToastHost";
-import { FORMAT_LABEL, PLATFORM_LABEL, aiPlanContent, aiPlanOne, bulkCreateContent, campaignColor, type ContentFormat, type ContentPlatform, type Person, type PlanItem } from "@/lib/content";
+import { FORMAT_LABEL, PLATFORM_LABEL, aiPlanContent, aiPlanOne, bulkCreateContent, campaignColor, type ContentFormat, type ContentPlatform, type Person, type PlanItem, type ServiceFocus } from "@/lib/content";
 
 type Row = PlanItem & { key: string; on: boolean; owners: string[]; busy?: boolean; open?: boolean };
 
@@ -31,6 +31,14 @@ const GOALS: { label: string; campaign: string; text: string }[] = [
   { label: "Giving & serving", campaign: "Serve & Give", text: "Encourage generosity and serving: stories of impact, ways to give and volunteer, and thanks to our teams." },
   { label: "Youth & special month", campaign: "Special Month", text: "A themed month for our youth/women/men: a different focus each week, real stories, and an event to rally around. (Theme and dates: …)" },
 ];
+// What to make from a service message.
+const FOCUS: { id: ServiceFocus; label: string; hint: string }[] = [
+  { id: "recap", label: "Service recap", hint: "The big idea and the moments that landed, for people who missed it" },
+  { id: "growth", label: "Word-growth actions", hint: "Practical points turned into things to do this week: read, journal, memorise, try" },
+  { id: "context", label: "Context & background", hint: "The setting and meaning behind the message, so it lands better" },
+];
+const MIN_EXCERPT = 80;
+const MAX_EXCERPT = 12000;
 const LENGTHS = [
   { label: "1 week", days: 7 },
   { label: "2 weeks", days: 14 },
@@ -49,6 +57,8 @@ const label = "mb-1.5 block text-xs font-semibold uppercase tracking-wide text-n
 export function AiPlanModal({ team, isAdmin, onClose, onAdded }: { team: Person[]; isAdmin: boolean; onClose: () => void; onAdded: (firstDate: string | null) => void }) {
   const [step, setStep] = useState<"brief" | "writing" | "review" | "done">("brief");
   const [brief, setBrief] = useState("");
+  const [excerpt, setExcerpt] = useState(""); // a service message pasted or typed in
+  const [focus, setFocus] = useState<ServiceFocus[]>(["recap", "growth", "context"]);
   const [campaign, setCampaign] = useState("");
   const [start, setStart] = useState(() => ymd(nextMonday()));
   const [days, setDays] = useState(28);
@@ -73,10 +83,12 @@ export function AiPlanModal({ team, isAdmin, onClose, onAdded }: { team: Person[
 
   async function write() {
     setError("");
-    if (brief.trim().length < 10) return setError("Tell the AI a little more about what you want — a sentence or two is enough.");
+    const hasExcerpt = excerpt.trim().length > 0;
+    if (hasExcerpt && excerpt.trim().length < MIN_EXCERPT) return setError("Paste a little more of the service — a few sentences at least — so the AI has something to work from.");
+    if (!hasExcerpt && brief.trim().length < 10) return setError("Tell the AI a little more about what you want — a sentence or two is enough — or paste in a service message.");
     setStep("writing");
     try {
-      const r = await aiPlanContent({ brief: brief.trim(), startDate: start, endDate: end, postsPerWeek: perWeek, formats, platforms, tone, campaign: campaign.trim() || undefined });
+      const r = await aiPlanContent({ brief: brief.trim(), serviceExcerpt: excerpt.trim() || undefined, serviceFocus: excerpt.trim() ? focus : undefined, startDate: start, endDate: end, postsPerWeek: perWeek, formats, platforms, tone, campaign: campaign.trim() || undefined });
       setSummary(r.summary);
       setRows(r.items.map((it, i) => ({ ...it, key: `${i}-${it.date}-${it.title}`, on: true, owners: [] })));
       setSprintName(campaign.trim() ? `${campaign.trim()} · ${nice(parse(start))} – ${nice(parse(end))}` : `Content plan · ${nice(parse(start))} – ${nice(parse(end))}`);
@@ -91,7 +103,7 @@ export function AiPlanModal({ team, isAdmin, onClose, onAdded }: { team: Person[
   async function another(r: Row) {
     patch(r.key, { busy: true });
     try {
-      const { item } = await aiPlanOne({ brief: brief.trim(), campaign: campaign.trim() || undefined, date: r.date, format: r.format, platform: r.platform, tone, avoid: rows.map((x) => x.title) });
+      const { item } = await aiPlanOne({ brief: brief.trim(), serviceExcerpt: excerpt.trim() || undefined, serviceFocus: excerpt.trim() ? focus : undefined, campaign: campaign.trim() || undefined, date: r.date, format: r.format, platform: r.platform, tone, avoid: rows.map((x) => x.title) });
       patch(r.key, { title: item.title, caption: item.caption, notes: item.notes, theme: item.theme, time: item.time, busy: false });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t get another idea.");
@@ -121,7 +133,7 @@ export function AiPlanModal({ team, isAdmin, onClose, onAdded }: { team: Person[
       const r = await bulkCreateContent({
         campaign: campaign.trim(),
         items: picked.map((p) => ({ title: p.title, caption: p.caption, notes: p.notes, theme: p.theme, format: p.format, platform: p.platform, scheduledAt: new Date(`${p.date}T${p.time}:00`).toISOString(), owners: p.owners })),
-        tasks: isAdmin && makeTasks ? { name: sprintName.trim() || "Content plan", startDate: start, endDate: end, goal: brief.trim().slice(0, 300), dueDaysBefore: daysBefore } : undefined,
+        tasks: isAdmin && makeTasks ? { name: sprintName.trim() || "Content plan", startDate: start, endDate: end, goal: (brief.trim() || "Posts from the service message").slice(0, 300), dueDaysBefore: daysBefore } : undefined,
       });
       setResult({ created: r.created, tasks: r.tasks, sprint: r.sprint, firstDate: picked.map((p) => p.date).sort()[0] ?? null });
       setStep("done");
@@ -160,7 +172,44 @@ export function AiPlanModal({ team, isAdmin, onClose, onAdded }: { team: Person[
         {/* 1. the brief */}
         {step === "brief" && (
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7">
-            <span className={label}>What do you want this calendar to achieve?</span>
+            {/* A service message to build the week from */}
+            <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50/40 p-4">
+              <span className={label}>From a service (optional)</span>
+              <textarea
+                value={excerpt}
+                onChange={(e) => setExcerpt(e.target.value.slice(0, MAX_EXCERPT))}
+                rows={6}
+                placeholder="Paste or type the message, your notes or part of the transcript. The AI turns it into the week's posts: a recap, practical word-growth actions, and the context behind it."
+                className={`${field} bg-white`}
+              />
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
+                <span>{excerpt.trim() ? "The posts are built from this text and nothing is added to what was said." : "Leave empty to plan from a goal alone."}</span>
+                <span className={excerpt.length > MAX_EXCERPT - 500 ? "font-semibold text-amber-700" : ""}>
+                  {excerpt.length.toLocaleString()} / {MAX_EXCERPT.toLocaleString()}
+                </span>
+              </div>
+              {excerpt.trim() && (
+                <div className="mt-3">
+                  <span className={label}>Make from it</span>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {FOCUS.map((f) => {
+                      const on = focus.includes(f.id);
+                      return (
+                        <button key={f.id} type="button" onClick={() => toggle(focus, f.id, setFocus)} aria-pressed={on} className={`rounded-xl border p-3 text-left transition ${on ? "border-orange-400 bg-white" : "border-neutral-200 bg-white/60 hover:bg-white"}`}>
+                          <span className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+                            <span className={`grid h-4 w-4 place-items-center rounded border ${on ? "border-orange-600 bg-orange-600 text-[#ffffff]" : "border-neutral-300"}`}>{on && <Check size={11} />}</span>
+                            {f.label}
+                          </span>
+                          <span className="mt-1 block text-xs text-neutral-500">{f.hint}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <span className={label}>{excerpt.trim() ? "Anything else the AI should know? (optional)" : "What do you want this calendar to achieve?"}</span>
             <div className="mb-2 flex flex-wrap gap-1.5">
               {GOALS.map((g) => (
                 <button

@@ -1,11 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getSocket } from './socket';
+import { useStream } from '@/components/StreamProvider';
 import type { Insight, Quote, TranscriptSegment } from './types';
 
 interface UseLiveSessionOptions {
   sessionId: string;
+  title: string;
   initialTranscript: TranscriptSegment[];
   initialQuotes: Quote[];
   initialInsights: Insight[];
@@ -13,6 +15,7 @@ interface UseLiveSessionOptions {
 
 export function useLiveSession({
   sessionId,
+  title,
   initialTranscript,
   initialQuotes,
   initialInsights,
@@ -21,45 +24,37 @@ export function useLiveSession({
   const [interimText, setInterimText] = useState('');
   const [quotes, setQuotes] = useState<Quote[]>(initialQuotes);
   const [insights, setInsights] = useState<Insight[]>(initialInsights);
-  const [isStarting, setIsStarting] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [error, setError] = useState('');
-  const [micStream, setMicStream] = useState<MediaStream | null>(null);
-  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  // The microphone and the link to the server belong to the app, not to this page (see StreamProvider), so streaming carries on
+  // when you go elsewhere. This hook is just this session's view of it, plus its transcript, quotes and insights.
+  const stream = useStream();
+  const mine = stream.active?.sessionId === sessionId;
+  const isStreaming = mine && (stream.status === 'streaming' || stream.status === 'reconnecting');
+  const isStarting = mine && stream.status === 'starting';
+  const isPaused = mine && stream.status === 'paused';
+  const start = useCallback(() => stream.start(sessionId, title), [stream, sessionId, title]);
+  const stop = useCallback(() => {
+    if (mine) stream.stop();
+    setInterimText('');
+  }, [mine, stream]);
 
-  const refreshDevices = useCallback(async () => {
-    if (!navigator.mediaDevices?.enumerateDevices) return;
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const mics = devices.filter((d) => d.kind === 'audioinput');
-      setAudioDevices(mics);
-      setSelectedDeviceId((prev) => {
-        if (prev && mics.some((m) => m.deviceId === prev)) return prev;
-        return mics[0]?.deviceId ?? '';
-      });
-    } catch {
-      // enumerateDevices can fail before permission is granted in some browsers; ignore.
-    }
-  }, []);
-
-  useEffect(() => {
-    // Fetching the device list on mount (and on devicechange) is exactly the "synchronize with
-    // an external system" case effects are for; the state update happens asynchronously after
-    // the enumerateDevices() promise resolves, not synchronously during this effect.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    refreshDevices();
-    navigator.mediaDevices?.addEventListener?.('devicechange', refreshDevices);
-    return () => {
-      navigator.mediaDevices?.removeEventListener?.('devicechange', refreshDevices);
-    };
-  }, [refreshDevices]);
+  // Coming back to the page after streaming from elsewhere: the server has kept everything, so take its copy when it arrives
+  // (never going backwards, so a segment that is on screen but not yet saved doesn't blink away). This adjusts state while
+  // rendering, the way React asks for "state that follows a prop".
+  const [seen, setSeen] = useState({ t: initialTranscript, q: initialQuotes, i: initialInsights });
+  if (seen.t !== initialTranscript || seen.q !== initialQuotes || seen.i !== initialInsights) {
+    setSeen({ t: initialTranscript, q: initialQuotes, i: initialInsights });
+    if (seen.t !== initialTranscript) setTranscript((prev) => (initialTranscript.length >= prev.length ? initialTranscript : prev));
+    if (seen.q !== initialQuotes) setQuotes((prev) => (initialQuotes.length >= prev.length ? initialQuotes : prev));
+    if (seen.i !== initialInsights) setInsights((prev) => (initialInsights.length >= prev.length ? initialInsights : prev));
+  }
 
   useEffect(() => {
     const socket = getSocket();
+    // Watching a session (this page open) means being in its room, whether or not you are the one streaming it.
+    const join = () => socket.emit('session:watch', { sessionId });
+    if (socket.connected) join();
+    socket.on('connect', join);
 
     function onTranscriptChunk({ text, isFinal }: { text: string; isFinal: boolean }) {
       if (isFinal) {
@@ -80,7 +75,7 @@ export function useLiveSession({
     }
 
     function onQuoteNew(quote: Quote) {
-      setQuotes((prev) => [quote, ...prev]);
+      setQuotes((prev) => (prev.some((q) => q._id === quote._id) ? prev : [quote, ...prev]));
     }
 
     function onInsightNew(insight: Insight) {
@@ -95,134 +90,23 @@ export function useLiveSession({
       });
     }
 
-    function onStreamError({ message }: { message: string }) {
-      setError(message);
-    }
-
-    // If the underlying socket drops mid-stream (server restart, network blip), socket.io
-    // reconnects transparently but the server loses all state tied to the old connection -
-    // including the Deepgram link. Audio would otherwise keep "streaming" from the client's
-    // point of view (recorder still running, mic pulse still animating) while silently going
-    // nowhere. Stop cleanly and surface it instead of leaving that invisible.
-    function onDisconnect() {
-      if (!mediaRecorderRef.current) return;
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current = null;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-      setIsStarting(false);
-      setIsStreaming(false);
-      setMicStream(null);
-      setError('Connection to the server was lost. Click "Start streaming" to resume.');
-    }
-
     socket.on('transcript:chunk', onTranscriptChunk);
     socket.on('quote:new', onQuoteNew);
     socket.on('insight:new', onInsightNew);
-    socket.on('stream:error', onStreamError);
-    socket.on('disconnect', onDisconnect);
 
     return () => {
+      socket.off('connect', join);
       socket.off('transcript:chunk', onTranscriptChunk);
       socket.off('quote:new', onQuoteNew);
       socket.off('insight:new', onInsightNew);
-      socket.off('stream:error', onStreamError);
-      socket.off('disconnect', onDisconnect);
     };
   }, [sessionId]);
-
-  const start = useCallback(async () => {
-    setError('');
-    setIsStarting(true);
-    try {
-      const socket = getSocket();
-      if (!socket.connected) socket.connect();
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : true,
-      });
-      streamRef.current = stream;
-      // Labels are blank until permission is granted; refresh now that it has been.
-      refreshDevices();
-
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
-      const recorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = recorder;
-
-      recorder.ondataavailable = async (event) => {
-        if (event.data.size === 0) return;
-        const buffer = await event.data.arrayBuffer();
-        socket.emit('stream:audio', buffer);
-      };
-
-      // The backend only confirms `stream:ready` once its Deepgram connection is actually
-      // open. Starting the recorder before that would send audio the server has nowhere to
-      // forward yet - and losing the first chunk (which carries the WebM header every later
-      // chunk depends on) would silently break transcription for the whole session.
-      const ready = new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          socket.off('stream:ready', onReady);
-          socket.off('stream:error', onStreamErr);
-          reject(new Error('Timed out waiting for the server to confirm the stream was ready.'));
-        }, 15000);
-        const onReady = () => {
-          clearTimeout(timeout);
-          socket.off('stream:error', onStreamErr);
-          resolve();
-        };
-        const onStreamErr = ({ message }: { message: string }) => {
-          clearTimeout(timeout);
-          socket.off('stream:ready', onReady);
-          reject(new Error(message));
-        };
-        socket.once('stream:ready', onReady);
-        socket.once('stream:error', onStreamErr);
-      });
-
-      socket.emit('stream:start', { sessionId });
-      await ready;
-
-      recorder.start(250);
-      setIsStreaming(true);
-      setMicStream(stream);
-    } catch (err) {
-      mediaRecorderRef.current = null;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-      setError(err instanceof Error ? err.message : 'Could not access microphone');
-      setIsStreaming(false);
-      setMicStream(null);
-    } finally {
-      setIsStarting(false);
-    }
-  }, [sessionId, selectedDeviceId, refreshDevices]);
 
   // Lets tabs that mutate a quote after the fact (captions, Instagram publish state) write the
   // result back into the same list `QuotesPanel` reads, instead of keeping a separate copy that
   // could drift out of sync.
   const updateQuote = useCallback((updated: Quote) => {
     setQuotes((prev) => prev.map((q) => (q._id === updated._id ? updated : q)));
-  }, []);
-
-  const stop = useCallback(() => {
-    const socket = getSocket();
-    mediaRecorderRef.current?.stop();
-    mediaRecorderRef.current = null;
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    socket.emit('stream:stop');
-    setIsStreaming(false);
-    setInterimText('');
-    setMicStream(null);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      mediaRecorderRef.current?.stop();
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-    };
   }, []);
 
   return {
@@ -233,11 +117,13 @@ export function useLiveSession({
     insights,
     isStarting,
     isStreaming,
-    error,
-    micStream,
-    audioDevices,
-    selectedDeviceId,
-    setSelectedDeviceId,
+    isPaused,
+    reconnecting: mine && stream.status === 'reconnecting',
+    error: mine ? stream.error : '',
+    micStream: mine ? stream.micStream : null,
+    audioDevices: stream.devices,
+    selectedDeviceId: stream.deviceId,
+    setSelectedDeviceId: stream.setDeviceId,
     start,
     stop,
   };

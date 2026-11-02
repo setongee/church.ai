@@ -10,6 +10,7 @@ import { resetPresentLayout } from "@/lib/presentLayouts";
 import { resetSkin } from "@/lib/skins";
 import { setDraftUser } from "@/lib/draft";
 import { DraftBar } from "./DraftBar";
+import { StreamProvider } from "./StreamProvider";
 import { ChatProvider } from "./chat/ChatProvider";
 import { ToastProvider } from "./notify/ToastHost";
 import { PushPrompt } from "./notify/PushPrompt";
@@ -107,6 +108,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, setUser]);
 
+  // The service started or ended, or a session did: what this person may open may have changed, so look again at once.
+  useEffect(() => {
+    if (!user) return;
+    const socket = getSocket();
+    const refresh = () => void fetchMe().then((r) => setUser((u) => (u && JSON.stringify(u) !== JSON.stringify(r.user) ? r.user : u))).catch(() => {});
+    socket.on("service:changed", refresh);
+    return () => void socket.off("service:changed", refresh);
+  }, [user, setUser]);
+
+  // Someone (this person, on another device) signed in: this device is signed out, and says why.
+  useEffect(() => {
+    if (!user) return;
+    const socket = getSocket();
+    const onReplaced = (m: { device?: string }) => {
+      clearToken();
+      clearCache();
+      socket.disconnect();
+      setUser(null);
+      window.location.assign(`/login?reason=replaced&device=${encodeURIComponent(m?.device || "another device")}`);
+    };
+    socket.on("session:replaced", onReplaced);
+    return () => void socket.off("session:replaced", onReplaced);
+  }, [user, setUser]);
+
   const logout = useCallback(async () => {
     resetPresentLayout();
     resetSkin();
@@ -132,7 +157,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       <ToastProvider>
         <PushPrompt />
         <NotificationProvider>
-          <ChatProvider>{children}</ChatProvider>
+          <ChatProvider>
+            <StreamProvider>{children}</StreamProvider>
+          </ChatProvider>
           <DraftBar />
         </NotificationProvider>
       </ToastProvider>

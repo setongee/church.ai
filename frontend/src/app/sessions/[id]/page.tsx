@@ -92,6 +92,7 @@ function SessionView({
 
   const live = useLiveSession({
     sessionId: id,
+    title: detail.session.title,
     initialTranscript: detail.transcript,
     initialQuotes: detail.quotes,
     initialInsights: detail.insights,
@@ -175,6 +176,7 @@ function SessionView({
             View transcript
           </button>
           {live.isStreaming && <MicPulse stream={live.micStream} />}
+          {live.reconnecting && <span className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">Reconnecting…</span>}
           {live.isStarting && <StartingIndicator />}
           {isLive && !live.isStreaming && !live.isStarting && (
             <>
@@ -187,7 +189,7 @@ function SessionView({
                 onClick={live.start}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
               >
-                Start streaming
+                {live.isPaused ? "Resume streaming" : "Start streaming"}
               </button>
             </>
           )}

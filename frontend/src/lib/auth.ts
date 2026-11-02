@@ -39,10 +39,23 @@ export const ROLE_PATHS: Record<TeamRole, string[]> = {
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
 
-export function canOpen(user: Pick<AuthUser, "isAdmin" | "roles">, path: string): boolean {
+// Pages that stay open while service mode limits someone to their job.
+const SERVICE_MODE_PATHS = ["/dashboard", "/chat", "/download", "/settings", "/profile", "/review"];
+
+export function canOpen(user: Pick<AuthUser, "isAdmin" | "roles" | "serviceMode">, path: string): boolean {
+  // While a service is live, the people rostered on it are limited to their job's pages (and the basics), so they stay on the
+  // work. `roles` is then just the jobs in force.
+  if (!user.isAdmin && user.serviceMode?.limited) return path === "/" || path === "/login" || SERVICE_MODE_PATHS.some((p) => under(path, p)) || user.roles.some((r) => ROLE_PATHS[r]?.some((p) => under(path, p)));
   // Everyone signed in has the dashboard and the team chat.
   if (user.isAdmin || path === "/" || path === "/login" || under(path, "/dashboard") || under(path, "/chat") || under(path, "/download") || under(path, "/settings") || under(path, "/profile") || under(path, "/board") || under(path, "/calendar") || under(path, "/review")) return true;
   return user.roles.some((r) => ROLE_PATHS[r]?.some((p) => under(path, p)));
+}
+
+// Service mode as it concerns this person: the live services they're on (admins: all live ones). `limited` = they are held to
+// their job's pages right now.
+export interface ServiceModeInfo {
+  limited: boolean;
+  live: { serviceId: string; name: string; since: string | null; activeSession: { id: string; name: string | null } | null; jobs: { role: TeamRole; session: string | null }[]; limited: boolean }[];
 }
 
 export interface AuthUser {
@@ -52,7 +65,8 @@ export interface AuthUser {
   phone?: string;
   isAdmin: boolean;
   roles: TeamRole[]; // everything they can currently open: their role's access plus current service assignments
-  appRole?: { _id: string; name: string } | null; // their app-level role (admins have none; they can open everything)
+  appRole?: { _id: string; name: string } | null;
+  serviceMode?: ServiceModeInfo; // their app-level role (admins have none; they can open everything)
   active: boolean;
 }
 
@@ -106,14 +120,15 @@ async function call<T>(path: string, init?: RequestInit, authed = false): Promis
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (authed && res.status === 401) handleUnauthorized();
-    throw Object.assign(new Error(body?.error || `Request failed (${res.status})`), { code: body?.code as string | undefined });
+    throw Object.assign(new Error(body?.error || `Request failed (${res.status})`), { code: body?.code as string | undefined, device: body?.device as string | undefined, lastSeenAt: body?.lastSeenAt as string | undefined });
   }
   return body as T;
 }
 
 export const authStatus = () => call<{ needsSetup: boolean }>("/status");
 export const setupAdmin = (input: { name: string; email: string; password: string }) => call<{ token: string; user: AuthUser }>("/setup", { method: "POST", body: JSON.stringify(input) });
-export const login = (email: string, password: string) => call<{ token: string; user: AuthUser }>("/login", { method: "POST", body: JSON.stringify({ email, password }) });
+// `takeOver` signs in even though the account is signed in on another device (which is then signed out).
+export const login = (email: string, password: string, takeOver = false) => call<{ token: string; user: AuthUser }>("/login", { method: "POST", body: JSON.stringify({ email, password, takeOver }) });
 export const fetchMe = () => call<{ user: AuthUser }>("/me", undefined, true);
 export const logoutRequest = () => call<{ ok: boolean }>("/logout", { method: "POST" }, true);
 export const changePassword = (currentPassword: string, newPassword: string) => call<{ ok: boolean }>("/password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) }, true);

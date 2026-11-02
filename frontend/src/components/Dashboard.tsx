@@ -7,6 +7,7 @@ import { useAuth } from "./AuthProvider";
 import { canOpen, roleLabel } from "@/lib/auth";
 import { myAssignments, type Assignment } from "@/lib/team";
 import { useCached } from "@/lib/queries";
+import { LiveServiceCard } from "./LiveServiceCard";
 import { flashElement, queryParam } from "@/lib/deeplink";
 import { getDashboard, type DashService, type Dashboard as DashboardData } from "@/lib/dashboard";
 import { useChat } from "./chat/ChatProvider";
@@ -97,8 +98,9 @@ export function Dashboard() {
       </div>
 
       <div className="space-y-6">
+        <LiveServiceCard />
         {todaysRoles.length > 0 && (
-          <p className="rounded-2xl border border-green-200 bg-green-50 px-5 py-3 text-sm font-semibold text-green-800">You’re on today: {todaysRoles.map((a) => `${a.serviceName} (${a.roles.map(roleLabel).join(" & ")})`).join(", ")}.</p>
+          <p className="rounded-2xl border border-green-200 bg-green-50 px-5 py-3 text-sm font-semibold text-green-800">You’re on today: {todaysRoles.map((a) => `${a.serviceName} (${a.items.map((it) => `${roleLabel(it.role)}${it.session ? ` · ${it.session}` : ""}`).join(" & ")})`).join(", ")}.</p>
         )}
         {unassigned && <p className="rounded-2xl bg-white px-5 py-3 text-sm text-neutral-500">You haven’t been added to a service roster yet — when you are, you’ll get an email and the pages for your role will open.</p>}
         {dashErr && !dash && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{dashErr.message}</p>}

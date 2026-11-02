@@ -4,7 +4,7 @@ import { PostUpload } from '../models/PostUpload.model.js';
 import { Task } from '../models/Task.model.js';
 import { Sprint } from '../models/Sprint.model.js';
 import { emitToAuthed } from '../services/realtime.service.js';
-import { PLAN_FORMATS, PLAN_PLATFORMS, generateContentPlan, generateOneIdea } from '../services/contentPlanner.service.js';
+import { PLAN_FORMATS, PLAN_PLATFORMS, SERVICE_FOCUS, generateContentPlan, generateOneIdea } from '../services/contentPlanner.service.js';
 import { User } from '../models/User.model.js';
 import { notify } from '../services/notification.service.js';
 import { publishItemNow } from '../services/contentScheduler.service.js';
@@ -308,9 +308,19 @@ export async function removeItem(req, res) {
 
 const dayOnly = (s) => new Date(`${s}T12:00:00Z`); // calendar days are stored at noon UTC so they read the same everywhere
 
+// What was preached or said at a service, pasted in by the team, and the kinds of post to make from it.
+function readExcerpt(b) {
+  const serviceExcerpt = String(b.serviceExcerpt ?? '').replace(/\r\n/g, '\n').trim().slice(0, 12000);
+  if (serviceExcerpt && serviceExcerpt.length < 80) throw bad('Paste a little more of the service (a few sentences at least) so the AI has something to work from.');
+  const serviceFocus = (Array.isArray(b.serviceFocus) ? b.serviceFocus : []).filter((f) => SERVICE_FOCUS.includes(f));
+  return { serviceExcerpt, serviceFocus: serviceFocus.length ? serviceFocus : SERVICE_FOCUS };
+}
+
 function readBrief(b) {
-  const brief = String(b.brief ?? '').trim();
-  if (brief.length < 10) throw bad('Tell the AI a little more about what you want (a sentence or two).');
+  const { serviceExcerpt, serviceFocus } = readExcerpt(b);
+  // With an excerpt, the goal can be left out: the message itself is the brief.
+  const brief = String(b.brief ?? '').trim() || (serviceExcerpt ? 'Turn this service message into the week’s posts: a recap, practical word-growth actions, and the context behind it.' : '');
+  if (brief.length < 10) throw bad('Tell the AI a little more about what you want (a sentence or two), or paste in a service message.');
   const startDate = String(b.startDate ?? '').slice(0, 10);
   const endDate = String(b.endDate ?? '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) throw bad('Pick the start and end dates for the calendar.');
@@ -328,6 +338,8 @@ function readBrief(b) {
     platforms: platforms.length ? platforms : ['instagram'],
     tone: String(b.tone ?? '').trim().slice(0, 60),
     campaign: String(b.campaign ?? '').trim().slice(0, 80),
+    serviceExcerpt,
+    serviceFocus,
   };
 }
 
@@ -343,9 +355,10 @@ export async function aiPlanItem(req, res) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw bad('That date isn’t valid.');
   const format = PLAN_FORMATS.includes(b.format) ? b.format : 'post';
   const platform = PLAN_PLATFORMS.includes(b.platform) ? b.platform : 'instagram';
-  const brief = String(b.brief ?? '').trim().slice(0, 3000);
+  const { serviceExcerpt, serviceFocus } = readExcerpt(b);
+  const brief = String(b.brief ?? '').trim().slice(0, 3000) || (serviceExcerpt ? 'Turn this service message into the week’s posts.' : '');
   if (brief.length < 10) throw bad('The brief is missing.');
-  res.json({ item: await generateOneIdea({ brief, campaign: String(b.campaign ?? '').slice(0, 80), date, format, platform, tone: String(b.tone ?? '').slice(0, 60), avoid: Array.isArray(b.avoid) ? b.avoid.map((t) => String(t).slice(0, 90)) : [] }) });
+  res.json({ item: await generateOneIdea({ brief, serviceExcerpt, serviceFocus, campaign: String(b.campaign ?? '').slice(0, 80), date, format, platform, tone: String(b.tone ?? '').slice(0, 60), avoid: Array.isArray(b.avoid) ? b.avoid.map((t) => String(t).slice(0, 90)) : [] }) });
 }
 
 // Saves a reviewed plan: every post becomes a calendar item (as an idea, with its planned time - nothing is queued to

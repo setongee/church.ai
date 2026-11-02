@@ -199,8 +199,11 @@ export interface PlanItem {
   caption: string;
   notes: string;
 }
+export type ServiceFocus = "recap" | "growth" | "context";
 export interface PlanInput {
   brief: string;
+  serviceExcerpt?: string; // what was preached or said at a service (pasted or typed)
+  serviceFocus?: ServiceFocus[]; // which kinds of post to make from it
   startDate: string;
   endDate: string;
   postsPerWeek: number;
@@ -210,7 +213,7 @@ export interface PlanInput {
   campaign?: string;
 }
 export const aiPlanContent = (input: PlanInput) => post<{ summary: string; items: PlanItem[] }>("/api/content/ai-plan", input);
-export const aiPlanOne = (input: { brief: string; campaign?: string; date: string; format: ContentFormat; platform: ContentPlatform; tone?: string; avoid: string[] }) => post<{ item: PlanItem }>("/api/content/ai-plan/item", input);
+export const aiPlanOne = (input: { brief: string; serviceExcerpt?: string; serviceFocus?: ServiceFocus[]; campaign?: string; date: string; format: ContentFormat; platform: ContentPlatform; tone?: string; avoid: string[] }) => post<{ item: PlanItem }>("/api/content/ai-plan/item", input);
 export const bulkCreateContent = (input: {
   campaign: string;
   items: { title: string; caption: string; notes: string; theme: string; format: ContentFormat; platform: ContentPlatform; scheduledAt: string; owners: string[] }[];

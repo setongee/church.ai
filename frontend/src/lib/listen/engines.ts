@@ -8,6 +8,7 @@ export interface EngineHooks {
   onTranscript: (text: string, isFinal: boolean) => void;
   onReady: () => void; // the mic is open and words will start flowing
   onError: (message: string, fatal?: boolean) => void;
+  onStatus?: (reconnecting: boolean) => void; // the connection dropped and is being re-established (listening carries on)
   onProgress?: (pct: number, label: string) => void; // the one-off model download
 }
 export interface RunningEngine {
@@ -18,26 +19,46 @@ export const isElectron = () => typeof navigator !== "undefined" && /Electron\//
 
 // ---- 1. the server (Deepgram) ---------------------------------------------------------------------------------------
 
+const HOLD_CHUNKS = 150; // about 15 s of audio (100 ms chunks) kept while the connection is down, then sent in order
+const GIVE_UP_MS = 60_000; // if it hasn't come back after this long, say so
+
+// Built to run through a whole service: a dropped connection (to the server, or the server's to the speech service) doesn't end
+// listening. The microphone stays open, what is said meanwhile is held, and when the link is back it is sent on.
 export function startServerEngine(opts: { deviceId?: string } & EngineHooks): RunningEngine {
   const socket = getSocket();
   if (!socket.connected) socket.connect();
   let capture: PcmCapture | null = null;
-  let open = false;
+  let open = false; // the server's link is up and so is ours
   let stopped = false;
+  let wasDown = false;
+  const held: ArrayBufferLike[] = [];
+  let downTimer: ReturnType<typeof setTimeout> | null = null;
   const timeout = setTimeout(() => !open && !stopped && opts.onError("The server didn’t answer. Check your connection and try again.", true), 9000);
+
+  const send = (buf: ArrayBufferLike) => {
+    if (open) socket.emit("listen:audio", buf);
+    else {
+      held.push(buf);
+      if (held.length > HOLD_CHUNKS) held.shift();
+    }
+  };
+  const recovered = () => {
+    open = true;
+    if (downTimer) clearTimeout(downTimer);
+    downTimer = null;
+    for (const b of held.splice(0)) socket.emit("listen:audio", b);
+    opts.onStatus?.(false);
+  };
 
   const onReady = async () => {
     if (stopped) return;
+    if (capture) return recovered(); // reconnected: the microphone never stopped
     try {
-      capture = await startPcmCapture({
-        deviceId: opts.deviceId,
-        onChunk: (f) => {
-          if (open && !stopped) socket.emit("listen:audio", toInt16(f).buffer);
-        },
-      });
+      capture = await startPcmCapture({ deviceId: opts.deviceId, onChunk: (f) => !stopped && send(toInt16(f).buffer) });
       if (stopped) return capture.stop();
-      open = true;
       clearTimeout(timeout);
+      open = true;
+      for (const b of held.splice(0)) socket.emit("listen:audio", b);
       opts.onReady();
     } catch (err) {
       opts.onError(micMessage(err), true);
@@ -45,23 +66,43 @@ export function startServerEngine(opts: { deviceId?: string } & EngineHooks): Ru
   };
   const onTranscript = (m: { text: string; isFinal: boolean }) => opts.onTranscript(m.text, m.isFinal);
   const onError = (m: { message: string }) => opts.onError(m.message, true);
-  const onDisconnect = () => !stopped && opts.onError("The connection to the server was lost.", true);
+  // The server is re-opening its link to the speech service. We keep sending; it holds what we send until it's back.
+  const onServerStatus = (m: { state: string }) => m.state === "reconnecting" && !stopped && opts.onStatus?.(true);
+  const onDisconnect = () => {
+    if (stopped) return;
+    open = false;
+    wasDown = true;
+    opts.onStatus?.(true);
+    downTimer ??= setTimeout(() => !stopped && !open && opts.onError("The connection to the server was lost and hasn’t come back.", true), GIVE_UP_MS);
+  };
+  // Our connection is back: the server has forgotten us, so ask it to start listening again ("ready" then replays what we held).
+  const onConnect = () => {
+    if (!stopped && wasDown && capture) {
+      wasDown = false;
+      socket.emit("listen:start", { sampleRate: 16000 });
+    }
+  };
   socket.on("listen:ready", onReady);
   socket.on("listen:transcript", onTranscript);
   socket.on("listen:error", onError);
+  socket.on("listen:status", onServerStatus);
   socket.on("disconnect", onDisconnect);
+  socket.on("connect", onConnect);
   socket.emit("listen:start", { sampleRate: 16000 });
 
   return {
     stop: () => {
       stopped = true;
       clearTimeout(timeout);
+      if (downTimer) clearTimeout(downTimer);
       capture?.stop();
       socket.emit("listen:stop");
       socket.off("listen:ready", onReady);
       socket.off("listen:transcript", onTranscript);
       socket.off("listen:error", onError);
+      socket.off("listen:status", onServerStatus);
       socket.off("disconnect", onDisconnect);
+      socket.off("connect", onConnect);
     },
   };
 }

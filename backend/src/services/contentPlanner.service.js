@@ -4,6 +4,7 @@ import { ContentItem } from '../models/ContentItem.model.js';
 import { aiIssue, callOpenRouterJSON } from './openrouter.service.js';
 
 export const PLAN_FORMATS = ['reel', 'post', 'carousel', 'story', 'video'];
+export const SERVICE_FOCUS = ['recap', 'growth', 'context'];
 export const PLAN_PLATFORMS = ['instagram', 'facebook', 'youtube', 'tiktok'];
 const MAX_ITEMS = 60;
 const CHUNK_DAYS = 14; // a long calendar is written a fortnight at a time, so each answer stays focused and complete
@@ -24,6 +25,14 @@ For each post give:
 - caption: a ready-to-post caption draft - a strong first line (the hook), the body, a clear call to action, and 3-6 relevant hashtags (max 700 characters)
 - notes: production notes for the team - what to film/design, who or what is needed, any assets or approvals (max 300 characters)
 Respond ONLY with JSON: {"summary": string (2-3 sentences on the strategy for the WHOLE period from range.overallFrom to range.overallTo), "items": [...]}`;
+
+// Added to the instructions when the team pastes in what was preached or said at a service.
+const SERVICE_RULES = `
+The team has also pasted in an EXCERPT FROM A SERVICE (serviceExcerpt): the message, notes or a transcript. Build this period's posts from it. serviceFocus says which kinds they want; make each kind that is listed, and spread them across the days instead of putting them together:
+- "recap": a recap of the service for people who missed it or want to remember it - the big idea, the moments that landed, a key line. Theme "Sunday recap". Early in the period, ideally the day after the service or Sunday itself.
+- "growth": take the practical points in the message and turn each into an ACTIONABLE word-growth post people can do this week - a short reading plan, a question to journal on, a verse to memorise and pray, a small challenge for the day, a family or small-group conversation starter. Say exactly what to do. Theme "Word growth". Space these through the week, one idea per post.
+- "context": give people the background behind the message so it lands better - who was being spoken to, what was happening, the meaning of a key word or image, how a passage fits the bigger story, why it matters today. Plain and warm, not academic. Theme "Context". Mid-week works well.
+Rules for using the excerpt: stay faithful to what was actually said; do not put words in the preacher's mouth or add teaching the excerpt doesn't contain. You may quote a short line from the excerpt exactly as written; never invent a quotation, and never write out a Bible verse's wording - give the reference and a short paraphrase. The excerpt is the source of the ideas; the brief says the goal. If serviceFocus is empty, use all three kinds. If the period is longer than a week, use the material across the whole period (fresh angles on later weeks, not the same post repeated). For notes, say which part of the message the post comes from.`;
 
 const pad = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
@@ -78,12 +87,13 @@ const AI_MESSAGE = {
 };
 
 async function ask(payload, count) {
+  const system = payload.serviceExcerpt ? SYSTEM + SERVICE_RULES : SYSTEM;
   if (!env.openrouterApiKey) throw fail('The AI writer isn’t set up on this server yet (no OpenRouter key).', 503);
   const models = [...new Set([env.contentPlanModel, env.openrouterNotesModel])];
   for (const model of models) {
     // A brief rate limit is common: wait a moment and try the same model once more before moving on.
     for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await callOpenRouterJSON({ system: SYSTEM, user: JSON.stringify(payload), maxTokens: Math.min(10000, 1500 + count * 520), temperature: 0.8, model }).catch(() => null);
+      const res = await callOpenRouterJSON({ system, user: JSON.stringify(payload), maxTokens: Math.min(10000, 1500 + count * 520), temperature: 0.8, model }).catch(() => null);
       if (res && Array.isArray(res.items)) return res;
       if (aiIssue() !== 'busy') break;
       await new Promise((r) => setTimeout(r, 2500));
@@ -93,7 +103,7 @@ async function ask(payload, count) {
 }
 
 // brief + range + rhythm -> a list of planned posts (not saved; the person reviews them first).
-export async function generateContentPlan({ brief, startDate, endDate, postsPerWeek, formats, platforms, tone, campaign }) {
+export async function generateContentPlan({ brief, startDate, endDate, postsPerWeek, formats, platforms, tone, campaign, serviceExcerpt, serviceFocus }) {
   const [church, already] = await Promise.all([churchContext(), plannedAlready(startDate, endDate)]);
   const totalDays = daysBetween(startDate, endDate);
   const wanted = Math.min(MAX_ITEMS, Math.max(1, Math.round((totalDays / 7) * postsPerWeek)));
@@ -111,6 +121,8 @@ export async function generateContentPlan({ brief, startDate, endDate, postsPerW
           brief,
           campaign: campaign || undefined,
           church,
+          serviceExcerpt: serviceExcerpt || undefined,
+          serviceFocus: serviceExcerpt ? serviceFocus : undefined,
           range: { from: cs, to: ce, overallFrom: startDate, overallTo: endDate },
           postsToWrite: share,
           postsPerWeek,
@@ -135,10 +147,10 @@ export async function generateContentPlan({ brief, startDate, endDate, postsPerW
 }
 
 // One replacement idea for a single slot ("try another") - avoids the titles already in the plan.
-export async function generateOneIdea({ brief, campaign, date, format, platform, tone, avoid }) {
+export async function generateOneIdea({ brief, campaign, date, format, platform, tone, avoid, serviceExcerpt, serviceFocus }) {
   const church = await churchContext();
   const res = await ask(
-    { brief, campaign: campaign || undefined, church, range: { from: date, to: date, overallFrom: date, overallTo: date }, postsToWrite: 1, postsPerWeek: 1, allowedFormats: [format], allowedPlatforms: [platform], tone: tone || 'warm and encouraging', alreadyPlanned: (avoid || []).slice(0, 40).map((title) => ({ title })), note: 'Give one fresh idea that is clearly different from everything in alreadyPlanned.' },
+    { brief, campaign: campaign || undefined, church, serviceExcerpt: serviceExcerpt || undefined, serviceFocus: serviceExcerpt ? serviceFocus : undefined, range: { from: date, to: date, overallFrom: date, overallTo: date }, postsToWrite: 1, postsPerWeek: 1, allowedFormats: [format], allowedPlatforms: [platform], tone: tone || 'warm and encouraging', alreadyPlanned: (avoid || []).slice(0, 40).map((title) => ({ title })), note: 'Give one fresh idea that is clearly different from everything in alreadyPlanned.' },
     1,
   );
   const [one] = clean(res.items, date, date, [format], [platform]);
