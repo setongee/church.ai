@@ -26,6 +26,8 @@ export interface PostUpload {
   originalName: string;
   mediaUrl: string;
   posterUrl: string;
+  music?: { trackId: string; name?: string; level: number; credit?: string };
+  musicUrl?: string;
   durationSec: number;
   width: number;
   height: number;
@@ -51,6 +53,7 @@ export const getPostUpload = (id: string) => req<PostUpload>(`/${id}`);
 export const updatePostUpload = (id: string, patch: Partial<Pick<PostUpload, "caption" | "notes" | "tone" | "title">>) => req<PostUpload>(`/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 export const rewriteCaptions = (id: string, input: { notes?: string; tone?: string }) => req<PostUpload>(`/${id}/captions`, { method: "POST", body: JSON.stringify(input) });
 export const publishPostUpload = (id: string, caption: string) => req<PostUpload>(`/${id}/publish`, { method: "POST", body: JSON.stringify({ caption }) });
+export const setPostMusic = (id: string, input: { trackId: string; level?: number }) => req<PostUpload>(`/${id}/music`, { method: "POST", body: JSON.stringify(input) });
 export const deletePostUpload = (id: string) => req<{ ok: boolean }>(`/${id}`, { method: "DELETE" });
 
 // Uploads can be hundreds of MB, so this reports progress (fetch can't).

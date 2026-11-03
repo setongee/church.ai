@@ -11,6 +11,10 @@ const postUploadSchema = new mongoose.Schema(
     originalName: { type: String, default: '' },
     mediaUrl: { type: String, default: '' }, // /uploads/post-uploads/<id>.mp4 (or .jpg) - what gets published
     posterUrl: { type: String, default: '' },
+    // Music mixed in from the app's library. A picture with music is posted as a short video (a Reel); a video keeps its
+    // own sound with the music underneath. `musicUrl` is that finished file, and is what gets published when it is set.
+    music: { type: new mongoose.Schema({ trackId: String, name: String, level: { type: Number, default: 1 }, credit: String }, { _id: false }), default: undefined },
+    musicUrl: { type: String, default: '' },
     durationSec: { type: Number, default: 0 },
     width: { type: Number, default: 0 },
     height: { type: Number, default: 0 },

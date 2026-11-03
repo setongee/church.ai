@@ -8,10 +8,11 @@ import { Design } from '../models/Design.model.js';
 import { Session } from '../models/Session.model.js';
 import { DesignAnimation } from '../models/DesignAnimation.model.js';
 import { generateInstagramCaption } from '../services/openrouter.service.js';
-import { publishCarouselToInstagram, InstagramConfigError, InstagramApiError } from '../services/instagram.service.js';
+import { publishCarouselToInstagram, publishVideoToInstagram, InstagramConfigError, InstagramApiError } from '../services/instagram.service.js';
 import { purgeAnimations } from './designAnimation.controller.js';
 import { localUrl } from '../services/audioPipeline.service.js';
 import { UPLOADS_DIR } from '../middlewares/upload.js';
+import { clampLevel, localFile, mixMusicIntoVideo, slideshowVideo, trackInfo } from '../services/postMusic.service.js';
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
@@ -54,6 +55,13 @@ function applyFields(doc, body) {
   if (typeof body.caption === 'string') doc.caption = body.caption.slice(0, 2200);
   if (body.width !== undefined) doc.width = clampSize(body.width, doc.width);
   if (body.height !== undefined) doc.height = clampSize(body.height, doc.height);
+  if (typeof body.notes === 'string') doc.notes = body.notes.slice(0, 1500);
+  if (['carousel', 'reel'].includes(body.postAs)) doc.postAs = body.postAs;
+  if (body.slideSeconds !== undefined) doc.slideSeconds = Math.min(10, Math.max(1, Math.round(Number(body.slideSeconds) * 2) / 2 || 3));
+  if (body.music === null || body.music === '') doc.music = undefined;
+  else if (body.music && typeof body.music === 'object' && body.music.trackId) {
+    doc.music = { trackId: String(body.music.trackId), name: String(body.music.name ?? '').slice(0, 80), level: clampLevel(body.music.level), credit: String(body.music.credit ?? '').slice(0, 300) };
+  }
   if (typeof body.savedAsRecipe === 'boolean') doc.savedAsRecipe = body.savedAsRecipe;
   if (body.recipe && typeof body.recipe === 'object') {
     doc.recipe = {
@@ -180,7 +188,7 @@ export async function generateCarouselCaption(req, res) {
   const ids = doc.slides.filter((s) => s.design).map((s) => s.design);
   const designs = await Design.find({ _id: { $in: ids } }).select('text');
   const text = designs.map((d) => d.text).filter(Boolean).join('\n');
-  const caption = await generateInstagramCaption({ quoteText: text || doc.title, sourceText: '', previousCaption: doc.caption || '' });
+  const caption = await generateInstagramCaption({ quoteText: text || doc.notes || doc.title, sourceText: doc.notes || '', previousCaption: doc.caption || '' });
   if (!caption) return res.status(502).json({ error: 'Failed to generate a caption. Check OPENROUTER_API_KEY and try again.' });
   doc.caption = caption;
   await doc.save();
@@ -190,12 +198,13 @@ export async function generateCarouselCaption(req, res) {
 export async function publishCarousel(req, res) {
   const doc = isId(req.params.id) ? await Carousel.findById(req.params.id) : null;
   if (!doc) return res.status(404).json({ error: 'carousel not found' });
-  if (doc.slides.length < 2 || doc.slides.length > MAX_SLIDES) {
-    return res.status(400).json({ error: `A carousel needs between 2 and ${MAX_SLIDES} slides (it has ${doc.slides.length}).` });
+  const asReel = doc.postAs === 'reel';
+  if (asReel ? doc.slides.length < 1 : doc.slides.length < 2 || doc.slides.length > MAX_SLIDES) {
+    return res.status(400).json({ error: asReel ? 'Add at least one slide.' : `A carousel needs between 2 and ${MAX_SLIDES} slides (it has ${doc.slides.length}).` });
   }
   const ratio = doc.width / doc.height;
-  if (ratio > 1.91 || ratio < 0.8) {
-    return res.status(400).json({ error: 'Carousel slides must be between 4:5 (portrait) and 1.91:1 (landscape). Pick a different size.' });
+  if (!asReel && (ratio > 1.91 || ratio < 0.8)) {
+    return res.status(400).json({ error: 'Carousel slides must be between 4:5 (portrait) and 1.91:1 (landscape). Pick a different size, or post it as a Reel slideshow.' });
   }
   const designs = await Design.find({ _id: { $in: doc.slides.filter((s) => s.design).map((s) => s.design) } }).select('exportedImageUrl title');
   const byId = new Map(designs.map((d) => [String(d._id), d]));
@@ -208,10 +217,38 @@ export async function publishCarousel(req, res) {
     } else if (s.kind === 'image') items.push({ type: 'image', url: s.imageUrl });
     else items.push({ type: 'video', url: s.videoUrl });
   }
+  if (doc.music?.trackId && !(await trackInfo(doc.music.trackId))) {
+    return res.status(400).json({ error: 'The music track you chose is no longer available. Choose another or remove the music.' });
+  }
+
+  // Files made just for this post (mixed videos, the slideshow) live in the public folder only while Instagram fetches them.
+  const made = [];
+  const temp = [];
   try {
-    const { mediaId, permalink } = await publishCarouselToInstagram({ items, caption: doc.caption });
-    doc.instagramMediaId = mediaId;
-    doc.instagramPermalink = permalink;
+    let result;
+    if (asReel) {
+      const slides = [];
+      for (const it of items) slides.push({ type: it.type, path: await localFile(it.url, temp) });
+      const name = `${doc._id}-reel-${Date.now()}.mp4`;
+      const out = path.join(CAROUSEL_DIR, name);
+      made.push(out);
+      await slideshowVideo({ slides, outputPath: out, trackId: doc.music?.trackId, level: doc.music?.level, secondsPerImage: doc.slideSeconds });
+      result = await publishVideoToInstagram({ videoUrl: localUrl('carousel', name), caption: doc.caption });
+    } else {
+      if (doc.music?.trackId) {
+        for (const [i, it] of items.entries()) {
+          if (it.type !== 'video') continue;
+          const name = `${doc._id}-mix${i}-${Date.now()}.mp4`;
+          const out = path.join(CAROUSEL_DIR, name);
+          made.push(out);
+          await mixMusicIntoVideo({ videoPath: await localFile(it.url, temp), outputPath: out, trackId: doc.music.trackId, level: doc.music.level });
+          it.url = localUrl('carousel', name);
+        }
+      }
+      result = await publishCarouselToInstagram({ items, caption: doc.caption });
+    }
+    doc.instagramMediaId = result.mediaId;
+    doc.instagramPermalink = result.permalink;
     doc.instagramPublishedAt = new Date();
     await doc.save();
     res.json(await present(doc));
@@ -219,8 +256,10 @@ export async function publishCarousel(req, res) {
     if (err instanceof InstagramConfigError || err instanceof InstagramApiError) {
       return res.status(err instanceof InstagramConfigError ? 400 : 502).json({ error: err.message });
     }
-    console.error('[carousel] instagram publish failed', err);
-    res.status(500).json({ error: 'Failed to publish to Instagram.' });
+    if (err instanceof Error && !(err.name === 'MongooseError')) console.error('[carousel] publish failed', err);
+    res.status(500).json({ error: err instanceof Error && /music|file|picture|video|slide/i.test(err.message) ? err.message : 'Failed to publish to Instagram.' });
+  } finally {
+    for (const f of [...made, ...temp]) fs.promises.unlink(f).catch(() => {});
   }
 }
 

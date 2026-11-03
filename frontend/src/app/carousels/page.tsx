@@ -31,7 +31,7 @@ function CarouselsList() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Carousels</h1>
-          <p className="mt-1 max-w-xl text-sm text-neutral-500">Swipeable Instagram posts from a service&apos;s key points, quotes and scriptures. Mix in your own images and videos, edit every slide, publish once.</p>
+          <p className="mt-1 max-w-xl text-sm text-neutral-500">Swipeable Instagram posts from a service&apos;s key points, quotes and scriptures, or start blank with your own pictures and videos. Add music, edit every slide, publish once.</p>
         </div>
         <button type="button" onClick={() => setCreating(true)} className="flex items-center gap-2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-neutral-700">
           <Plus size={16} /> New carousel
@@ -44,7 +44,7 @@ function CarouselsList() {
       ) : items.length === 0 ? (
         <div className="mt-12 rounded-2xl border border-dashed border-neutral-300 p-10 text-center text-sm text-neutral-500">
           <Images className="mx-auto mb-2 text-neutral-400" />
-          No carousels yet. Build one from a session.
+          No carousels yet. Build one from a session, or start a blank one.
         </div>
       ) : (
         <ul className="mt-8 grid gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">

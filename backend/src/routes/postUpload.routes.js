@@ -9,6 +9,7 @@ router.post('/', c.postFileUpload.single('file'), h(c.createUpload));
 router.get('/:id', h(c.getUpload));
 router.patch('/:id', h(c.updateUpload));
 router.post('/:id/captions', h(c.regenerate));
+router.post('/:id/music', h(c.setMusic));
 router.post('/:id/publish', h(c.publishUpload));
 router.delete('/:id', h(c.removeUpload));
 

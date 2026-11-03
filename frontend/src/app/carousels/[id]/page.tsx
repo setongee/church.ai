@@ -30,6 +30,7 @@ import { SIZE_PRESETS } from '@/components/editor/constants';
 import { downloadBlob, exportSlidesZip, zipName, type ZipOptions } from '@/components/carousel/exportZip';
 import { renderState } from '@/components/carousel/render';
 import { Popover, Spinner, cx } from '@/components/editor/ui';
+import { MusicPicker } from '@/components/MusicPicker';
 
 const MAX = 10;
 
@@ -201,7 +202,8 @@ export default function CarouselBuilder({ params }: { params: Promise<{ id: stri
     }
   }
   const ratio = post.width / post.height;
-  const ratioOk = ratio >= 0.8 && ratio <= 1.91;
+  const asReel = post.postAs === 'reel';
+  const ratioOk = asReel || (ratio >= 0.8 && ratio <= 1.91);
   const posted = Boolean(post.instagramPublishedAt);
 
   function move(i: number, to: number) {
@@ -245,9 +247,18 @@ export default function CarouselBuilder({ params }: { params: Promise<{ id: stri
     });
   }
 
-  function upload(file: File) {
-    if (slides.length >= MAX) return setError(`A carousel can have up to ${MAX} slides.`);
-    run('upload', async () => setPost(await addCarouselMedia(id, file)));
+  // One or several files at once; each becomes a slide, in the order picked.
+  function upload(files: File[]) {
+    const room = MAX - slides.length;
+    if (room <= 0) return setError(`A carousel can have up to ${MAX} slides.`);
+    const take = files.slice(0, room);
+    run('upload', async () => {
+      for (const [i, f] of take.entries()) {
+        setBusy(`Adding ${i + 1}/${take.length}…`);
+        setPost(await addCarouselMedia(id, f));
+      }
+      if (take.length < files.length) setNotice(`Added ${take.length}. A carousel holds up to ${MAX} slides, so the rest were left out.`);
+    });
   }
 
   function openAnimations(opts?: { design?: string; replaceIndex?: number }) {
@@ -289,9 +300,9 @@ export default function CarouselBuilder({ params }: { params: Promise<{ id: stri
     });
 
   function publish() {
-    if (slides.length < 2) return setError('Add at least 2 slides.');
+    if (slides.length < (asReel ? 1 : 2)) return setError(asReel ? 'Add at least 1 slide.' : 'Add at least 2 slides.');
     if (!ratioOk) return setError('Slides must be between 4:5 and 1.91:1 for a carousel. Create a new carousel at a supported size.');
-    if (!window.confirm(`Publish ${slides.length} slides to Instagram now?`)) return;
+    if (!window.confirm(asReel ? `Publish these ${slides.length} slides to Instagram as a Reel now?` : `Publish ${slides.length} slides to Instagram now?`)) return;
     run('publish', async () => {
       // Re-export every design slide from its latest saved state so the post matches what is shown here.
       for (const [i, s] of slides.entries()) {
@@ -334,7 +345,7 @@ export default function CarouselBuilder({ params }: { params: Promise<{ id: stri
         </div>
       </div>
 
-      {!ratioOk && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">This size can&apos;t be posted as an Instagram carousel (slides must be between 4:5 and 1.91:1).</p>}
+      {!ratioOk && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">This size can&apos;t be posted as an Instagram carousel (slides must be between 4:5 and 1.91:1). You can still post it as a Reel slideshow below.</p>}
       {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       {notice && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p>}
 
@@ -417,14 +428,14 @@ export default function CarouselBuilder({ params }: { params: Promise<{ id: stri
               className="w-60"
               trigger={(_, toggle) => (
                 <button type="button" onClick={toggle} className="grid w-full place-items-center rounded-xl border-2 border-dashed border-neutral-300 text-sm font-medium text-neutral-500 hover:border-neutral-500 hover:text-neutral-800" style={{ aspectRatio: `${post.width} / ${post.height}` }}>
-                  <span className="flex flex-col items-center gap-1.5">{busy === 'upload' ? <Spinner /> : <Plus size={22} />} Add slide</span>
+                  <span className="flex flex-col items-center gap-1.5">{busy === 'upload' || busy.startsWith('Adding') ? <Spinner /> : <Plus size={22} />} {busy.startsWith('Adding') ? busy : 'Add slide'}</span>
                 </button>
               )}
             >
               {(close) => (
                 <ul className="space-y-0.5 text-sm">
                   <li><button type="button" onClick={() => { close(); addBlank(); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-neutral-100"><LayoutTemplate size={15} /> New design slide</button></li>
-                  <li><button type="button" onClick={() => { close(); fileRef.current?.click(); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-neutral-100"><ImagePlus size={15} /> Upload image or video</button></li>
+                  <li><button type="button" onClick={() => { close(); fileRef.current?.click(); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-neutral-100"><ImagePlus size={15} /> Upload images or videos</button></li>
                   <li><button type="button" onClick={() => { close(); openAnimations(); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-neutral-100"><Film size={15} /> Animated design…</button></li>
                   <li><button type="button" onClick={() => { close(); listAllDesigns().then(setPickDesigns).catch(() => setError('Could not load your designs.')); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-neutral-100"><Images size={15} /> From my designs…</button></li>
                 </ul>
@@ -433,7 +444,7 @@ export default function CarouselBuilder({ params }: { params: Promise<{ id: stri
           </li>
         )}
       </ul>
-      <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; }} />
+      <input ref={fileRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => { const f = Array.from(e.target.files ?? []); if (f.length) upload(f); e.target.value = ''; }} />
       <p className="mt-3 text-xs text-neutral-400">Drag slides to reorder. Slides are cropped to the first slide&apos;s shape by Instagram, so keep them all the same size. Videos are converted for Instagram (up to 60s each).</p>
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_20rem]">
@@ -445,15 +456,46 @@ export default function CarouselBuilder({ params }: { params: Promise<{ id: stri
           <textarea id="caption" value={caption} onChange={(e) => setCaption(e.target.value)} onBlur={saveCaption} rows={6} maxLength={2200} placeholder="Say something about this post…" className="w-full resize-y rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-500" />
           <p className="mt-1 text-right text-[11px] text-neutral-400">{caption.length}/2200</p>
         </div>
-        <div className="rounded-xl border border-neutral-200 p-4">
-          <p className="text-sm font-semibold text-neutral-900">Publish</p>
-          <p className="mt-1 text-xs text-neutral-500">Posts all {slides.length} slides as one Instagram carousel.</p>
-          {posted && post.instagramPermalink && (
-            <a href={post.instagramPermalink} target="_blank" rel="noreferrer" className="mt-3 flex items-center gap-1.5 text-sm font-medium text-emerald-700 hover:underline">Posted <ExternalLink size={13} /></a>
-          )}
-          <button type="button" onClick={publish} disabled={Boolean(busy) || slides.length < 2} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-neutral-700 disabled:opacity-50">
-            {busy === 'publish' || busy.startsWith('Prep') || busy.startsWith('Publishing') ? <><Spinner /> Working…</> : posted ? 'Publish again' : 'Publish to Instagram'}
-          </button>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-neutral-200 p-4">
+            <p className="text-sm font-semibold text-neutral-900">Music</p>
+            <p className="mb-3 mt-1 text-xs text-neutral-500">
+              {asReel
+                ? 'Plays over the whole Reel. The sound of any video slides is replaced by the music.'
+                : 'Instagram can’t attach a song to a carousel from here, so the music is mixed into the video slides. Photo slides stay silent — post as a Reel slideshow to have the music over everything.'}
+            </p>
+            <MusicPicker
+              value={post.music ?? null}
+              disabled={Boolean(busy)}
+              onChange={(music) => run('music', async () => setPost(await updateCarouselPost(id, { music })))}
+              onAddCredit={(line) => {
+                const next = caption.trim() ? `${caption.trim()}\n\n${line}` : line;
+                setCaption(next);
+                run('caption', async () => setPost(await updateCarouselPost(id, { caption: next })));
+              }}
+            />
+          </div>
+          <div className="rounded-xl border border-neutral-200 p-4">
+            <p className="text-sm font-semibold text-neutral-900">Publish</p>
+            <div className="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-neutral-100 p-1 text-xs font-semibold">
+              {([['carousel', 'Carousel'], ['reel', 'Reel slideshow']] as const).map(([k, l]) => (
+                <button key={k} type="button" disabled={Boolean(busy)} onClick={() => (post.postAs ?? 'carousel') !== k && run('mode', async () => setPost(await updateCarouselPost(id, { postAs: k })))} className={cx('rounded-md px-2 py-1.5', (post.postAs ?? 'carousel') === k ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-800')}>{l}</button>
+              ))}
+            </div>
+            {asReel && (
+              <label className="mt-3 block text-xs text-neutral-600">
+                <span className="flex justify-between"><span>Time on each picture</span><span className="tabular-nums">{post.slideSeconds ?? 3}s</span></span>
+                <input key={post.slideSeconds} type="range" min={1} max={8} step={0.5} defaultValue={post.slideSeconds ?? 3} disabled={Boolean(busy)} onPointerUp={(e) => run('mode', async () => setPost(await updateCarouselPost(id, { slideSeconds: Number((e.target as HTMLInputElement).value) })))} onKeyUp={(e) => run('mode', async () => setPost(await updateCarouselPost(id, { slideSeconds: Number((e.target as HTMLInputElement).value) })))} className="w-full accent-neutral-900" />
+              </label>
+            )}
+            <p className="mt-2 text-xs text-neutral-500">{asReel ? `Plays all ${slides.length} slides in turn as one vertical Reel (up to 90 seconds).` : `Posts all ${slides.length} slides as one Instagram carousel.`}</p>
+            {posted && post.instagramPermalink && (
+              <a href={post.instagramPermalink} target="_blank" rel="noreferrer" className="mt-3 flex items-center gap-1.5 text-sm font-medium text-emerald-700 hover:underline">Posted <ExternalLink size={13} /></a>
+            )}
+            <button type="button" onClick={publish} disabled={Boolean(busy) || slides.length < (asReel ? 1 : 2)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-neutral-700 disabled:opacity-50">
+              {busy === 'publish' || busy.startsWith('Prep') || busy.startsWith('Publishing') ? <><Spinner /> Working…</> : posted ? 'Publish again' : asReel ? 'Publish Reel to Instagram' : 'Publish to Instagram'}
+            </button>
+          </div>
         </div>
       </section>
 

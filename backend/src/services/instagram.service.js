@@ -27,6 +27,34 @@ function assertConfigured() {
   }
 }
 
+// Instagram downloads each file itself and, if it gets a web page instead of a picture or video (an ngrok "tunnel offline" page,
+// a login wall, a 404), only says "Only photo or video can be accepted as media type". Fetching the file first from here lets
+// us say what is actually wrong. Third-party hosts such as Cloudinary are left alone.
+async function assertServesMedia(url, kind) {
+  let host = '';
+  try {
+    host = new URL(url).host;
+  } catch {
+    return;
+  }
+  if (host === 'res.cloudinary.com') return;
+  const ask = (method) => fetch(url, { method, headers: { 'User-Agent': 'facebookexternalhit/1.1', ...(method === 'GET' ? { Range: 'bytes=0-0' } : {}) }, signal: AbortSignal.timeout(15000) });
+  let res;
+  try {
+    res = await ask('HEAD');
+    if (!res.ok || !res.headers.get('content-type')) res = await ask('GET');
+  } catch {
+    throw new InstagramApiError(`Instagram can’t be given this ${kind}: ${host} didn’t answer. Check that the backend is running and its public URL (INSTAGRAM_PUBLIC_BASE_URL) is reachable from the internet.`);
+  }
+  const type = res.headers.get('content-type') || '';
+  if (!res.ok || !new RegExp(`^${kind}/`, 'i').test(type)) {
+    throw new InstagramApiError(
+      `Instagram can’t read this ${kind}: ${url} returned ${res.ok ? `“${type || 'no type'}”` : `status ${res.status}`} instead of a ${kind}. ` +
+        'If you’re using an ngrok tunnel, it has probably been restarted or points at the wrong port: start it for the backend’s port and update INSTAGRAM_PUBLIC_BASE_URL.'
+    );
+  }
+}
+
 async function graphRequest(path, { method = 'GET', body } = {}) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(body || {})) {
@@ -92,6 +120,7 @@ export async function publishImageToInstagram({ imagePath, caption, mediaType })
     imagePath.startsWith('http') ? imagePath : `${env.instagramPublicBaseUrl.replace(/\/$/, '')}${imagePath}`
   );
   const isStory = mediaType === 'STORIES';
+  await assertServesMedia(imageUrl, 'image');
 
   const container = await graphRequest(`/${env.instagramBusinessAccountId}/media`, {
     method: 'POST',
@@ -132,6 +161,7 @@ export async function publishVideoToInstagram({ videoUrl, caption }) {
     // keep as is
   }
   const publicUrl = `${env.instagramPublicBaseUrl.replace(/\/$/, '')}${pathname}`;
+  await assertServesMedia(publicUrl, 'video');
 
   const container = await graphRequest(`/${env.instagramBusinessAccountId}/media`, {
     method: 'POST',
@@ -176,6 +206,7 @@ export async function publishCarouselToInstagram({ items, caption }) {
   for (const item of items) {
     const isVideo = item.type === 'video';
     const url = isVideo ? publicUrl(item.url) : toInstagramImageUrl(publicUrl(item.url));
+    await assertServesMedia(url, isVideo ? 'video' : 'image');
     const child = await graphRequest(`/${env.instagramBusinessAccountId}/media`, {
       method: 'POST',
       body: isVideo ? { media_type: 'VIDEO', video_url: url, is_carousel_item: 'true' } : { image_url: url, is_carousel_item: 'true' },

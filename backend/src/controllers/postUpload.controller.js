@@ -4,7 +4,8 @@ import path from 'path';
 import multer from 'multer';
 import mongoose from 'mongoose';
 import { PostUpload } from '../models/PostUpload.model.js';
-import { generateCaptions, processUpload, publishUploadToInstagram, removeUploadFiles } from '../services/postUpload.service.js';
+import { generateCaptions, processUpload, publishUploadToInstagram, removeUploadFiles, POST_DIR } from '../services/postUpload.service.js';
+import { clampLevel, mixMusicIntoVideo, slideshowVideo, trackInfo } from '../services/postMusic.service.js';
 import { ContentItem } from '../models/ContentItem.model.js';
 import { InstagramApiError, InstagramConfigError } from '../services/instagram.service.js';
 
@@ -97,4 +98,36 @@ export async function removeUpload(req, res) {
   await ContentItem.updateMany({ upload: doc._id }, { upload: null });
   await doc.deleteOne();
   res.json({ ok: true });
+}
+
+// Adds music to the upload (or takes it off when `trackId` is empty). A video keeps its sound with the music underneath; a
+// picture becomes a 10-second video. The original file is kept, so the track can be changed or removed any time.
+export async function setMusic(req, res) {
+  const doc = await find(req.params.id);
+  if (doc.status !== 'ready') throw bad('Still getting this ready.');
+  if (doc.instagramMediaId) throw bad('This has already been posted.', 409);
+  const trackId = String(req.body?.trackId ?? '');
+  const old = doc.musicUrl;
+  if (!trackId) {
+    doc.music = undefined;
+    doc.musicUrl = '';
+  } else {
+    const info = await trackInfo(trackId);
+    if (!info) throw bad('That music track isn’t available any more.', 404);
+    const level = clampLevel(req.body?.level);
+    const name = `${doc._id}-m${Date.now()}.mp4`;
+    const output = path.join(POST_DIR, name);
+    try {
+      if (doc.kind === 'video') await mixMusicIntoVideo({ videoPath: path.join(POST_DIR, path.basename(doc.mediaUrl)), outputPath: output, trackId, level });
+      else await slideshowVideo({ slides: [{ type: 'image', path: path.join(POST_DIR, path.basename(doc.mediaUrl)) }], outputPath: output, trackId, level, secondsPerImage: 10 });
+    } catch (err) {
+      fs.promises.unlink(output).catch(() => {});
+      throw bad(err.message || 'Couldn’t add the music.', 422);
+    }
+    doc.music = { trackId, name: info.name, level, credit: info.credit };
+    doc.musicUrl = `/uploads/post-uploads/${name}`;
+  }
+  await doc.save();
+  if (old) fs.promises.unlink(path.join(POST_DIR, path.basename(old))).catch(() => {});
+  res.json(shape(doc));
 }

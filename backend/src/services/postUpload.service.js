@@ -154,14 +154,15 @@ export async function generateCaptions(id, { previous = [] } = {}) {
 }
 
 export function removeUploadFiles(doc) {
-  for (const u of [doc.mediaUrl, doc.posterUrl]) if (u) fs.promises.unlink(path.join(POST_DIR, path.basename(u))).catch(() => {});
+  for (const u of [doc.mediaUrl, doc.posterUrl, doc.musicUrl]) if (u) fs.promises.unlink(path.join(POST_DIR, path.basename(u))).catch(() => {});
 }
 
 // Publishes a ready upload to the real Instagram account (a video as a Reel, a picture as a post) and records where it
 // went on the upload. Shared by the "Post to Instagram" button and the content calendar's scheduler. Throws the
 // Instagram errors for the caller to word.
 export async function publishUploadToInstagram(doc, caption) {
-  const { mediaId, permalink } = doc.kind === 'video' ? await publishVideoToInstagram({ videoUrl: doc.mediaUrl, caption }) : await publishImageToInstagram({ imagePath: doc.mediaUrl, caption });
+  // With music added, even a picture goes out as a video: a still post can't carry sound.
+  const { mediaId, permalink } = doc.musicUrl ? await publishVideoToInstagram({ videoUrl: doc.musicUrl, caption }) : doc.kind === 'video' ? await publishVideoToInstagram({ videoUrl: doc.mediaUrl, caption }) : await publishImageToInstagram({ imagePath: doc.mediaUrl, caption });
   doc.caption = caption;
   doc.instagramMediaId = mediaId;
   doc.instagramPermalink = permalink;

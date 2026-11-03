@@ -7,6 +7,7 @@ import type {
   AudioMergeStyle,
   MessageNotes,
   CarouselPost,
+  PostMusic,
   ImageAsset,
   Brand,
   ChatMessage,
@@ -795,7 +796,7 @@ export function getCarouselPost(id: string): Promise<CarouselPost> {
 
 export function updateCarouselPost(
   id: string,
-  patch: { title?: string; caption?: string; width?: number; height?: number; slides?: SlideInput[]; savedAsRecipe?: boolean; recipe?: CarouselPost['recipe'] }
+  patch: { title?: string; caption?: string; notes?: string; music?: PostMusic | null; postAs?: 'carousel' | 'reel'; slideSeconds?: number; width?: number; height?: number; slides?: SlideInput[]; savedAsRecipe?: boolean; recipe?: CarouselPost['recipe'] }
 ): Promise<CarouselPost> {
   return request(`/api/carousels/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
 }

@@ -433,6 +433,13 @@ export interface CarouselPostSlide {
   designInfo?: { _id: string; title: string; width: number; height: number; exportedImageUrl?: string; updatedAt: string; text?: string; editorState?: Record<string, unknown> } | null;
 }
 
+export interface PostMusic {
+  trackId: string;
+  name?: string;
+  level: number;
+  credit?: string;
+}
+
 export interface CarouselPost {
   _id: string;
   title: string;
@@ -440,6 +447,11 @@ export interface CarouselPost {
   width: number;
   height: number;
   caption: string;
+  notes?: string;
+  // Music mixed into the files (Instagram's API can't attach a song to a post), and how the post goes out.
+  music?: PostMusic;
+  postAs?: 'carousel' | 'reel';
+  slideSeconds?: number;
   slides: CarouselPostSlide[];
   savedAsRecipe: boolean;
   recipe?: { source: string; count: number; templateId: string; coverTemplateId?: string; cover: boolean; closing: boolean };

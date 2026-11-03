@@ -20,6 +20,14 @@ const carouselSchema = new mongoose.Schema(
     width: { type: Number, default: 1080 },
     height: { type: Number, default: 1350 },
     caption: { type: String, default: '' },
+    // What the post is about, for the AI caption writer (used when the slides are plain pictures with no text).
+    notes: { type: String, default: '' },
+    // Music from the app's library. Instagram's API can't attach a song to a carousel, so it is mixed into the files:
+    // under the video slides when posting as a carousel, or over the whole thing when posting as a Reel slideshow
+    // (every slide in turn, `slideSeconds` per picture).
+    music: { type: new mongoose.Schema({ trackId: String, name: String, level: { type: Number, default: 1 }, credit: String }, { _id: false }), default: undefined },
+    postAs: { type: String, enum: ['carousel', 'reel'], default: 'carousel' },
+    slideSeconds: { type: Number, default: 3 },
     slides: { type: [slideSchema], default: [] },
     // Saved as a reusable carousel recipe (listed when starting a new carousel).
     savedAsRecipe: { type: Boolean, default: false, index: true },

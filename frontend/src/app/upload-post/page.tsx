@@ -3,9 +3,10 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarPlus, Check, Clapperboard, Copy, ExternalLink, ImageIcon, Loader2, RefreshCw, Send, Trash2, UploadCloud } from "lucide-react";
-import { assetUrl } from "@/lib/api";
-import { createPostUpload, deletePostUpload, getPostUpload, listPostUploads, publishPostUpload, rewriteCaptions, updatePostUpload, type PostUpload } from "@/lib/postUpload";
+import { CalendarPlus, Check, Clapperboard, Images, Copy, ExternalLink, ImageIcon, Loader2, RefreshCw, Send, Trash2, UploadCloud } from "lucide-react";
+import { addCarouselMedia, assetUrl, createCarouselPost, generateCarouselPostCaption, updateCarouselPost } from "@/lib/api";
+import { MusicPicker } from "@/components/MusicPicker";
+import { createPostUpload, deletePostUpload, getPostUpload, listPostUploads, publishPostUpload, rewriteCaptions, setPostMusic, updatePostUpload, type PostUpload } from "@/lib/postUpload";
 import { useCached } from "@/lib/queries";
 import { Modal } from "@/components/present/ui";
 import { ScheduleUploadModal } from "@/components/calendar/ScheduleUploadModal";
@@ -49,7 +50,8 @@ function Start() {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const file = files.length === 1 ? files[0] : null;
   const [notes, setNotes] = useState("");
   const [tone, setTone] = useState("");
   const [pct, setPct] = useState<number | null>(null);
@@ -57,22 +59,40 @@ function Start() {
   const { data: recent, set: setRecent } = useCached<PostUpload[]>(["post-uploads"], listPostUploads);
 
   async function go() {
-    if (!file) return;
+    if (!files.length) return;
     setError("");
     setPct(0);
     try {
-      const doc = await createPostUpload(file, { notes, tone }, setPct);
+      if (files.length > 1) {
+        // Several files make a carousel: one slide each, in the order picked.
+        const picked = files.slice(0, 10);
+        const post = await createCarouselPost({ title: notes.trim().split("\n")[0].slice(0, 80) || "Untitled carousel" });
+        for (const [i, f] of picked.entries()) {
+          await addCarouselMedia(post._id, f);
+          setPct(Math.round(((i + 1) / picked.length) * 100));
+        }
+        if (notes.trim()) {
+          await updateCarouselPost(post._id, { notes });
+          await generateCarouselPostCaption(post._id).catch(() => {});
+        }
+        router.push(`/carousels/${post._id}`);
+        return;
+      }
+      const doc = await createPostUpload(files[0], { notes, tone }, setPct);
       router.push(`/upload-post?id=${doc._id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
       setPct(null);
     }
   }
-  const pick = (f?: File | null) => {
-    if (f && /^(video|image)\//.test(f.type || (/\.(mp4|mov|m4v|webm)$/i.test(f.name) ? "video/x" : /\.(png|jpe?g|webp|heic)$/i.test(f.name) ? "image/x" : ""))) {
-      setFile(f);
-      setError("");
-    } else if (f) setError("Choose a video or a picture.");
+  const kindOf = (f: File) => (f.type.startsWith("video") || /\.(mp4|mov|m4v|webm)$/i.test(f.name) ? "video" : f.type.startsWith("image") || /\.(png|jpe?g|webp|heic)$/i.test(f.name) ? "image" : "");
+  const pick = (list?: FileList | File[] | null) => {
+    const all = Array.from(list ?? []);
+    if (!all.length) return;
+    const ok = all.filter(kindOf);
+    if (!ok.length) return setError("Choose a video or a picture.");
+    setFiles(ok.slice(0, 10));
+    setError(ok.length < all.length ? "Some files weren’t pictures or videos and were left out." : all.length > 10 ? "A carousel holds up to 10, so the first 10 were kept." : "");
   };
 
   return (
@@ -85,11 +105,18 @@ function Start() {
           onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && input.current?.click()}
           onDragOver={(e) => (e.preventDefault(), setOver(true))}
           onDragLeave={() => setOver(false)}
-          onDrop={(e) => (e.preventDefault(), setOver(false), pick(e.dataTransfer.files[0]))}
-          className={`grid min-h-52 cursor-pointer place-items-center rounded-2xl border-2 border-dashed p-6 text-center transition ${over ? "border-orange-500 bg-orange-50" : file ? "border-orange-300 bg-orange-50/40" : "border-neutral-300 hover:border-orange-300"}`}
+          onDrop={(e) => (e.preventDefault(), setOver(false), pick(e.dataTransfer.files))}
+          className={`grid min-h-52 cursor-pointer place-items-center rounded-2xl border-2 border-dashed p-6 text-center transition ${over ? "border-orange-500 bg-orange-50" : files.length ? "border-orange-300 bg-orange-50/40" : "border-neutral-300 hover:border-orange-300"}`}
         >
-          <input ref={input} type="file" accept="video/*,image/*,.mp4,.mov,.m4v,.webm,.png,.jpg,.jpeg,.webp,.heic" hidden onChange={(e) => pick(e.target.files?.[0])} />
-          {file ? (
+          <input ref={input} type="file" accept="video/*,image/*,.mp4,.mov,.m4v,.webm,.png,.jpg,.jpeg,.webp,.heic" hidden multiple onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
+          {files.length > 1 ? (
+            <div>
+              <Images size={30} className="mx-auto text-orange-600" />
+              <p className="mt-3 text-sm font-semibold text-neutral-900">{files.length} files → one swipeable carousel</p>
+              <p className="mx-auto mt-1 max-w-sm truncate text-xs text-neutral-500">{files.map((f) => f.name).join(", ")}</p>
+              <p className="mt-1 text-xs text-neutral-500">Click to choose different files. You’ll arrange them and add music next.</p>
+            </div>
+          ) : file ? (
             <div>
               {file.type.startsWith("video") || /\.(mp4|mov|m4v|webm)$/i.test(file.name) ? <Clapperboard size={30} className="mx-auto text-orange-600" /> : <ImageIcon size={30} className="mx-auto text-orange-600" />}
               <p className="mt-3 text-sm font-semibold text-neutral-900">{file.name}</p>
@@ -99,7 +126,7 @@ function Start() {
             <div>
               <UploadCloud size={32} className="mx-auto text-neutral-400" />
               <p className="mt-3 text-sm font-semibold text-neutral-900">Drop a video or picture here, or click to browse</p>
-              <p className="mt-1 text-xs text-neutral-500">Vertical video (9:16) works best for Reels. MP4 or MOV up to 800 MB.</p>
+              <p className="mt-1 text-xs text-neutral-500">Vertical video (9:16) works best for Reels. Choose several pictures or videos to make a carousel. MP4 or MOV up to 800 MB.</p>
             </div>
           )}
         </div>
@@ -127,8 +154,8 @@ function Start() {
             <p className="mt-1 text-xs text-neutral-500">{pct < 100 ? `Uploading… ${pct}%` : "Upload done — getting it ready…"}</p>
           </div>
         )}
-        <button onClick={go} disabled={!file || pct !== null} className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-3 text-sm font-semibold text-[#ffffff] hover:bg-orange-700 disabled:opacity-50">
-          {pct !== null ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />} Upload &amp; write captions
+        <button onClick={go} disabled={!files.length || pct !== null} className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-3 text-sm font-semibold text-[#ffffff] hover:bg-orange-700 disabled:opacity-50">
+          {pct !== null ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />} {files.length > 1 ? `Make a carousel from ${files.length} files` : "Upload & write captions"}
         </button>
       </section>
 
@@ -231,6 +258,16 @@ function Editor({ id }: { id: string }) {
     }
     setBusy("");
   }
+  async function chooseMusic(music: { trackId: string; level: number } | null) {
+    setBusy("music");
+    setError("");
+    try {
+      setDoc(await setPostMusic(id, { trackId: music?.trackId ?? "", level: music?.level }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t add the music");
+    }
+    setBusy("");
+  }
   async function publish() {
     setBusy("publish");
     setError("");
@@ -285,8 +322,8 @@ function Editor({ id }: { id: string }) {
       {/* The upload */}
       <aside className="space-y-4">
         <div className="overflow-hidden rounded-2xl bg-white">
-          {doc.kind === "video" ? (
-            <video src={assetUrl(doc.mediaUrl)} poster={doc.posterUrl ? assetUrl(doc.posterUrl) : undefined} controls playsInline className="max-h-[28rem] w-full bg-black object-contain" />
+          {doc.kind === "video" || doc.musicUrl ? (
+            <video key={doc.musicUrl || doc.mediaUrl} src={assetUrl(doc.musicUrl || doc.mediaUrl)} poster={doc.posterUrl ? assetUrl(doc.posterUrl) : undefined} controls playsInline className="max-h-[28rem] w-full bg-black object-contain" />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={assetUrl(doc.mediaUrl)} alt="" className="max-h-[28rem] w-full bg-neutral-100 object-contain" />
@@ -301,6 +338,30 @@ function Editor({ id }: { id: string }) {
             {doc.kind === "video" && doc.width > 0 && doc.height / doc.width < 1.5 && <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">This isn’t vertical (9:16), so it may show with bars as a Reel.</p>}
           </div>
         </div>
+
+        {!posted && (
+          <div className="rounded-2xl bg-white p-4">
+            <p className="text-sm font-semibold text-neutral-900">Music</p>
+            <p className="mb-3 mt-0.5 text-xs text-neutral-500">
+              {doc.kind === "video" ? "Mixed in under the video’s own sound." : "A picture can’t carry sound, so with music it’s posted as a 10-second Reel."} Instagram’s own song library can’t be attached from outside the app, so pick from ours or add your own.
+            </p>
+            <MusicPicker
+              value={doc.music ?? null}
+              disabled={!!busy}
+              onChange={(m) => void chooseMusic(m)}
+              onAddCredit={(line) => {
+                const next = caption.trim() ? `${caption.trim()}\n\n${line}` : line;
+                setCaption(next);
+                void updatePostUpload(id, { caption: next }).catch(() => {});
+              }}
+            />
+            {busy === "music" && (
+              <p className="mt-3 flex items-center gap-2 text-xs text-neutral-500">
+                <Loader2 size={13} className="animate-spin" /> Mixing the music in… a long video can take a minute.
+              </p>
+            )}
+          </div>
+        )}
 
         {doc.transcript && (
           <div className="rounded-2xl bg-white p-4">
@@ -417,7 +478,7 @@ function Editor({ id }: { id: string }) {
             </span>
             <div>
               <p className="text-sm text-neutral-600">
-                This goes live on your <b className="text-neutral-900">real Instagram account</b> right now{doc.kind === "video" ? ", as a Reel" : ""}. Posting a video can take a minute or two.
+                This goes live on your <b className="text-neutral-900">real Instagram account</b> right now{doc.kind === "video" || doc.musicUrl ? ", as a Reel" : ""}. Posting a video can take a minute or two.
               </p>
               <p className="mt-3 max-h-48 overflow-y-auto whitespace-pre-line rounded-xl bg-neutral-50 p-3 text-[13px] leading-relaxed text-neutral-800">{caption}</p>
               {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
