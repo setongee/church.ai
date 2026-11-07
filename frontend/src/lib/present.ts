@@ -755,6 +755,15 @@ export const BACKGROUND_PRESETS: { name: string; bg: Background }[] = [
   { name: "Green screen", bg: { type: "color", value: "#00b140" } },
 ];
 
+// Text sizes are fixed, in pixels on the 1920x1080 screen, and never depend on how much text a slide has (text only steps
+// down when it would overflow). A look stores
+// them as a multiplier of this base (so 1 = 72 px); the controls show and set pixels.
+export const BODY_PX = 72;
+export const MIN_PX = 24;
+export const MAX_PX = 240;
+export const pxOf = (scale: number) => Math.round(scale * BODY_PX);
+export const scaleOfPx = (px: number) => Math.min(MAX_PX, Math.max(MIN_PX, Math.round(px))) / BODY_PX;
+
 // ---- schedules --------------------------------------------------------------------------------
 
 export type ScheduleItemType = "scripture" | "song" | "announcement" | "image" | "prayer" | "quote" | "media" | "slideshow" | "template";
@@ -778,6 +787,13 @@ export interface ScheduleItem {
   show?: { seconds: number; loop: boolean };
   // A template item with a scene set up (see TemplateScene).
   scene?: TemplateScene;
+  // The session (a named group inside the schedule) this item sits in; empty = not in one.
+  session?: string;
+}
+// A session: a sub-schedule, e.g. "Praise" holding all the praise songs.
+export interface ScheduleSession {
+  _id: string;
+  name: string;
 }
 export type ScheduleItemInput = Omit<ScheduleItem, "_id">;
 
@@ -804,6 +820,7 @@ export interface Schedule {
   _id: string;
   name: string;
   items: ScheduleItem[];
+  sessions?: ScheduleSession[];
   settings: ScheduleSettings;
 }
 
@@ -821,9 +838,9 @@ export const endPresentSession = () => req<{ session: null }>("/session", { meth
 
 export const listSchedules = () => req<ScheduleSummary[]>("/schedules");
 export const getSchedule = (id: string) => req<Schedule>(`/schedules/${id}`).then((s) => ({ ...s, items: s.items.map((it) => (it.type === "prayer" ? { ...it, slides: it.slides.map(asPrayerSlide) } : it)) }));
-export const createSchedule = (input: { name: string; items?: ScheduleItem[] | ScheduleItemInput[]; settings?: ScheduleSettings }) =>
+export const createSchedule = (input: { name: string; items?: ScheduleItem[] | ScheduleItemInput[]; sessions?: ScheduleSession[]; settings?: ScheduleSettings }) =>
   req<Schedule>("/schedules", { method: "POST", body: JSON.stringify(input) });
-export const updateSchedule = (id: string, input: Partial<Pick<Schedule, "name" | "items" | "settings">>) =>
+export const updateSchedule = (id: string, input: Partial<Pick<Schedule, "name" | "items" | "sessions" | "settings">>) =>
   req<Schedule>(`/schedules/${id}`, { method: "PUT", body: JSON.stringify(input) });
 export const deleteSchedule = (id: string) => req<{ ok: boolean }>(`/schedules/${id}`, { method: "DELETE" });
 

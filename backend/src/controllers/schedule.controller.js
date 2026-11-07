@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Schedule } from '../models/Schedule.model.js';
 import { PresentSession } from '../models/PresentSession.model.js';
 import { cleanBackground } from './presentContent.controller.js';
@@ -118,7 +119,23 @@ export function cleanSlide(s) {
   return { kind: 'text', variant, scene: variant && s.scene ? cleanScene(s.scene) : undefined, layout, kicker: layout && s.kicker ? str(s.kicker, 60) : undefined, accent: layout && /^#[0-9a-f]{6}$/i.test(s.accent) ? s.accent : undefined, title: s.title ? str(s.title, 200) : undefined, text: str(s.text, 4000), imageUrl: s.imageUrl ? str(s.imageUrl, 1000) : undefined, background: cleanBackground(s.background) ?? undefined };
 }
 
-function cleanItems(items) {
+const OID = /^[0-9a-f]{24}$/i;
+function cleanSessions(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const x of list.slice(0, 40)) {
+    const name = str(x?.name, 60).trim();
+    if (!name) continue;
+    const id = x?._id && OID.test(x._id) && !seen.has(x._id) ? x._id : new mongoose.Types.ObjectId().toString();
+    seen.add(id);
+    out.push({ _id: id, name });
+  }
+  return out;
+}
+
+// `sessionIds` are the sessions that exist on the schedule; an item pointing at a missing one drops out of it.
+function cleanItems(items, sessionIds = new Set()) {
   if (!Array.isArray(items)) return [];
   return items
     .slice(0, 500)
@@ -128,6 +145,7 @@ function cleanItems(items) {
       type: i.type,
       title: str(i.title, 200),
       subtitle: str(i.subtitle, 200),
+      session: typeof i.session === 'string' && sessionIds.has(i.session) ? i.session : '',
       ...(i.type === 'template' && i.scene ? { scene: cleanScene(i.scene) } : {}),
       ...(i.type === 'slideshow' && i.show ? { show: { seconds: Math.min(600, Math.max(2, Number(i.show.seconds) || 8)), loop: Boolean(i.show.loop) } } : {}),
       slides: (Array.isArray(i.slides) ? i.slides : []).slice(0, 200).map(cleanSlide).filter(Boolean),
@@ -138,7 +156,7 @@ function cleanItems(items) {
 export function cleanLook(l) {
   if (!l || typeof l !== 'object') return null;
   const background = cleanBackground(l.background);
-  return { frame: cleanFrame(l.frame), frameBg: cleanBackground(l.frameBg), align: l.align === 'left' ? 'left' : 'center', scale: Math.min(2, Math.max(0.3, Number(l.scale) || 1)), ...(background ? { background } : {}) };
+  return { frame: cleanFrame(l.frame), frameBg: cleanBackground(l.frameBg), align: l.align === 'left' ? 'left' : 'center', scale: Math.min(3.4, Math.max(0.3, Number(l.scale) || 1)), ...(background ? { background } : {}) };
 }
 // { scripture?, song?, prayer? } - the looks a template (or the screen) gives each section, or null when none are set.
 export function cleanSections(s) {
@@ -159,7 +177,7 @@ function cleanScene(sc) {
     layer: 'background',
     background: cleanBackground(sc?.background),
     ...(sections ? { sections } : {}),
-    style: { frame: cleanFrame(st.frame), frameBg: cleanBackground(st.frameBg), align: st.align === 'left' ? 'left' : 'center', scale: Math.min(2, Math.max(0.3, Number(st.scale) || 1)) },
+    style: { frame: cleanFrame(st.frame), frameBg: cleanBackground(st.frameBg), align: st.align === 'left' ? 'left' : 'center', scale: Math.min(3.4, Math.max(0.3, Number(st.scale) || 1)) },
   };
 }
 
@@ -181,7 +199,7 @@ function cleanSettings(s) {
     const st = s.style;
     out.style = {
       align: st.align === 'left' ? 'left' : 'center',
-      scale: Math.min(2, Math.max(0.3, Number(st.scale) || 1)),
+      scale: Math.min(3.4, Math.max(0.3, Number(st.scale) || 1)),
       font: str(st.font, 80),
       weight: [400, 500, 700].includes(Number(st.weight)) ? Number(st.weight) : 500,
       imageFit: IMAGE_FITS.has(st.imageFit) ? st.imageFit : 'contain',
@@ -228,7 +246,8 @@ export async function getSchedule(req, res) {
 export async function createSchedule(req, res) {
   const name = str(req.body?.name, 80).trim();
   if (!name) throw bad('Give the schedule a name.');
-  res.json(await Schedule.create({ name, items: cleanItems(req.body?.items), settings: cleanSettings(req.body?.settings) }));
+  const sessions = cleanSessions(req.body?.sessions);
+  res.json(await Schedule.create({ name, sessions, items: cleanItems(req.body?.items, new Set(sessions.map((x) => x._id))), settings: cleanSettings(req.body?.settings) }));
 }
 
 export async function updateSchedule(req, res) {
@@ -237,7 +256,11 @@ export async function updateSchedule(req, res) {
     update.name = str(req.body.name, 80).trim();
     if (!update.name) throw bad('Give the schedule a name.');
   }
-  if (req.body?.items !== undefined) update.items = cleanItems(req.body.items);
+  if (req.body?.sessions !== undefined) update.sessions = cleanSessions(req.body.sessions);
+  if (req.body?.items !== undefined) {
+    const ids = new Set((update.sessions ?? (await Schedule.findById(req.params.id).select('sessions').lean())?.sessions ?? []).map((x) => String(x._id)));
+    update.items = cleanItems(req.body.items, ids);
+  }
   if (req.body?.settings !== undefined) update.settings = cleanSettings(req.body.settings);
   const doc = await Schedule.findByIdAndUpdate(req.params.id, update, { new: true });
   if (!doc) throw bad('Schedule not found.', 404);

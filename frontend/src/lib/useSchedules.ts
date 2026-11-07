@@ -16,6 +16,8 @@ import {
 } from "./present";
 
 const SAVE_DELAY = 500;
+// The session id if the schedule still has it, else "" (no session).
+const s0 = (s: Schedule | null, id: string) => (id && s?.sessions?.some((x) => x._id === id) ? id : "");
 
 interface Options {
   // The schedule the service was started with.
@@ -49,7 +51,7 @@ export function useSchedules({ startId, current, apply, onActive, onGone }: Opti
     const s = activeRef.current;
     if (!s) return;
     try {
-      await updateSchedule(s._id, { name: s.name, items: s.items, settings: s.settings });
+      await updateSchedule(s._id, { name: s.name, items: s.items, sessions: s.sessions ?? [], settings: s.settings });
     } catch (e) {
       fail(e);
     }
@@ -100,9 +102,10 @@ export function useSchedules({ startId, current, apply, onActive, onGone }: Opti
   );
 
   const addItem = useCallback(
-    (item: ScheduleItemInput) => {
+    (item: ScheduleItemInput, sessionId = "") => {
       if (!activeRef.current) return false;
-      mutate((s) => ({ ...s, items: [...s.items, { ...item, _id: newId() }] }));
+      const session = s0(activeRef.current, sessionId);
+      mutate((s) => ({ ...s, items: [...s.items, { ...item, session, _id: newId() }] }));
       return true;
     },
     [mutate],
@@ -118,6 +121,22 @@ export function useSchedules({ startId, current, apply, onActive, onGone }: Opti
       }),
     [mutate],
   );
+  const addSession = useCallback(
+    (name: string) => {
+      const n = name.trim().slice(0, 60);
+      if (!n) return;
+      const id = newId();
+      mutate((s) => ({ ...s, sessions: [...(s.sessions ?? []), { _id: id, name: n }] }));
+    },
+    [mutate],
+  );
+  const renameSession = useCallback((id: string, name: string) => name.trim() && mutate((s) => ({ ...s, sessions: (s.sessions ?? []).map((x) => (x._id === id ? { ...x, name: name.trim().slice(0, 60) } : x)) })), [mutate]);
+  // Deleting a session keeps its items (they just stop being in one), unless `withItems`.
+  const removeSession = useCallback(
+    (id: string, withItems = false) => mutate((s) => ({ ...s, sessions: (s.sessions ?? []).filter((x) => x._id !== id), items: withItems ? s.items.filter((i) => i.session !== id) : s.items.map((i) => (i.session === id ? { ...i, session: "" } : i)) })),
+    [mutate],
+  );
+  const assignItem = useCallback((itemId: string, session: string) => mutate((s) => ({ ...s, items: s.items.map((i) => (i._id === itemId ? { ...i, session } : i)) })), [mutate]);
   // The wrapper (and the look from before it) stay on the schedule unless the caller says otherwise (pass
   // `wrapperId: undefined` to remove it).
   const saveSettings = useCallback(
@@ -151,7 +170,8 @@ export function useSchedules({ startId, current, apply, onActive, onGone }: Opti
         await flush();
         const s = await createSchedule({
           name,
-          items: from?.items.map((i) => ({ type: i.type, title: i.title, subtitle: i.subtitle, slides: i.slides, show: i.show, scene: i.scene })),
+          items: from?.items.map((i) => ({ type: i.type, title: i.title, subtitle: i.subtitle, slides: i.slides, show: i.show, scene: i.scene, session: i.session })),
+          sessions: from?.sessions,
           settings: from?.settings ?? cb.current.current(),
         });
         setList((l) => [...l, { _id: s._id, name: s.name, count: s.items.length }]);
@@ -183,5 +203,5 @@ export function useSchedules({ startId, current, apply, onActive, onGone }: Opti
     }
   }, []);
 
-  return { list, active, error, clearError: () => setError(""), addItem, removeItem, moveItem, saveSettings, rename, switchTo, create, duplicate, removeActive };
+  return { list, active, error, addSession, renameSession, removeSession, assignItem, clearError: () => setError(""), addItem, removeItem, moveItem, saveSettings, rename, switchTo, create, duplicate, removeActive };
 }

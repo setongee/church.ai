@@ -6,8 +6,9 @@ import { ANNOUNCEMENT_TEMPLATES, mediaSrc, type Slide } from "@/lib/present";
 type TextSlide = Extract<Slide, { kind: "text" }>;
 
 // Text sizes on the 1920x1080 screen, stepped down as the words get longer.
-const titlePx = (len: number, big: number) => (len <= 14 ? big : len <= 24 ? big * 0.8 : len <= 40 ? big * 0.64 : len <= 64 ? big * 0.5 : big * 0.4);
-const bodyPx = (len: number) => (len <= 90 ? 56 : len <= 200 ? 46 : len <= 360 ? 38 : len <= 560 ? 32 : 27);
+// Fixed sizes: a title or body is never shrunk because it is longer.
+const TITLE_FACTOR = 0.75;
+const BODY_SIZE = 44;
 
 const fill: CSSProperties = { position: "absolute", inset: 0 };
 const WHITE = "#ffffff";
@@ -40,8 +41,8 @@ export function AnnouncementView({ slide, scale = 1 }: { slide: TextSlide; scale
   const body = slide.text ?? "";
   const kicker = slide.kicker;
   const image = slide.imageUrl;
-  const t = (big: number) => titlePx(title.length, big) * scale;
-  const b = bodyPx(body.length) * scale;
+  const t = (big: number) => big * TITLE_FACTOR * scale;
+  const b = BODY_SIZE * scale;
   const wrap = (bg: string | undefined, children: ReactNode, style?: CSSProperties) => (
     <div style={{ ...fill, overflow: "hidden", background: bg, ...style }}>{children}</div>
   );

@@ -10,17 +10,10 @@ import { AlertBanner } from "./AlertBanner";
 import { AnnouncementView } from "./AnnouncementView";
 import { SplitPoints } from "./SplitPoints";
 import { templateById } from "./ministeringTemplates";
-import { mediaSrc, sectionOf, type ScripturePart, type Background, type Frame, type ImageFit, type PresentState, type Slide } from "@/lib/present";
+import { BODY_PX, mediaSrc, sectionOf, type ScripturePart, type Background, type Frame, type ImageFit, type PresentState, type Slide } from "@/lib/present";
 
 const W = 1920;
 const H = 1080;
-
-// Auto-fit: shorter text is set bigger. Tuned for a 1920x1080 canvas.
-function fontSize(len: number, lines: number) {
-  const byLen = len <= 60 ? 112 : len <= 120 ? 96 : len <= 200 ? 82 : len <= 320 ? 68 : len <= 480 ? 56 : len <= 700 ? 46 : 38;
-  const byLines = lines <= 3 ? 112 : lines <= 5 ? 92 : lines <= 7 ? 76 : lines <= 9 ? 62 : 50;
-  return Math.min(byLen, byLines);
-}
 
 function isLight(bg: Background) {
   if (bg.type !== "color") return false;
@@ -89,7 +82,7 @@ const announcementLayoutOf = (slide: Slide, style: PresentState["style"]) =>
   slide.kind !== "text" || slide.variant ? null : slide.layout && slide.layout !== "classic" ? slide.layout : style.announcementTemplate && style.announcementTemplate !== "classic" ? style.announcementTemplate : null;
 
 // Text laid out inside a user-placed frame (a lower third, a side panel...). The type is sized to fill the
-// frame: it starts big and steps down until everything fits.
+// frame: it is set at the chosen fixed size and only steps down if the text would overflow the frame.
 function FramedSlide({ slide, frame, frameBg, style, color, shadow }: { slide: Slide; frame: Frame; frameBg: Background | null; style: PresentState["style"]; color: string; shadow: string }) {
   const content = useRef<HTMLDivElement>(null);
   const align = style.align === "left" ? "left" : "center";
@@ -97,21 +90,23 @@ function FramedSlide({ slide, frame, frameBg, style, color, shadow }: { slide: S
   const pad = `${Math.round(Math.min(44, frame.h * 0.12))}px ${Math.round(Math.min(72, frame.w * 0.04))}px`;
   const flush = frame.x <= 0 && frame.x + frame.w >= 1920;
 
+  // The size is fixed (it never depends on how much text there is). Only when the text would overflow the frame does it
+  // step down, just far enough to fit.
   const fit = useCallback(() => {
     const el = content.current;
     if (!el) return;
-    let size = Math.min(120, frame.h * 0.6) * style.scale;
+    let size = BODY_PX * style.scale;
     el.style.fontSize = `${size}px`;
     for (let i = 0; i < 45 && size > 14 && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1); i++) {
       size = Math.floor(size * 0.94);
       el.style.fontSize = `${size}px`;
     }
-  }, [frame.h, style.scale]);
+  }, [style.scale]);
   useLayoutEffect(() => {
     fit();
     // Web fonts arrive after the first layout; fit again once they have.
     document.fonts?.ready.then(fit).catch(() => {});
-  }, [fit, slide, frame.w, weight, style.font]);
+  }, [fit, slide, frame.w, frame.h, weight, style.font]);
 
   const small = (extra: React.CSSProperties = {}): React.CSSProperties => ({ fontSize: "0.52em", opacity: 0.85, marginTop: "0.45em", fontWeight: Math.min(900, weight + 100), ...extra });
   const part = (p: ScripturePart) => (
@@ -211,7 +206,7 @@ function QuoteView({ slide, style, color, shadow, dark, align, w, strong, hasFon
     ) : null;
 
   if (layout === "centered") {
-    const size = fontSize(text.length * 1.3, text.split("\n").length) * 0.82 * sc;
+    const size = BODY_PX * sc;
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center px-[200px] py-[90px] text-center" style={{ color, textShadow: shadow, fontFamily: serif }}>
         <span className="mb-12 block h-[5px] w-[140px] rounded-full" style={{ background: "#f59e0b" }} />
@@ -221,7 +216,7 @@ function QuoteView({ slide, style, color, shadow, dark, align, w, strong, hasFon
     );
   }
   if (layout === "bold") {
-    const size = fontSize(text.length * 1.1, text.split("\n").length) * 0.95 * sc;
+    const size = BODY_PX * sc;
     return (
       <div className="absolute inset-0 flex flex-col justify-center px-[140px] py-[90px]" style={{ color, textShadow: shadow, textAlign: align }}>
         <p style={{ fontSize: size, lineHeight: 1.12, fontWeight: style.weight ? Math.min(900, style.weight + 200) : 800, textTransform: "uppercase", letterSpacing: "-0.01em" }}>{text}</p>
@@ -234,7 +229,7 @@ function QuoteView({ slide, style, color, shadow, dark, align, w, strong, hasFon
     );
   }
   if (layout === "bar") {
-    const size = fontSize(text.length * 1.3, text.split("\n").length) * 0.82 * sc;
+    const size = BODY_PX * sc;
     return (
       <div className="absolute inset-0 flex items-center px-[170px] py-[90px]" style={{ color, textShadow: shadow }}>
         <div className="shrink-0 self-stretch rounded-full" style={{ width: 16, background: "#f97316", margin: "150px 70px 150px 0" }} />
@@ -246,7 +241,7 @@ function QuoteView({ slide, style, color, shadow, dark, align, w, strong, hasFon
     );
   }
   if (layout === "card") {
-    const size = fontSize(text.length * 1.5, text.split("\n").length) * 0.72 * sc;
+    const size = BODY_PX * sc;
     return (
       <div className="absolute inset-0 flex items-center justify-center px-[170px] py-[110px]">
         <div className="flex max-h-full flex-col items-center justify-center rounded-[52px] px-[110px] py-[90px] text-center" style={{ color, background: dark ? "rgba(255,255,255,.55)" : "rgba(0,0,0,.38)", backdropFilter: "blur(18px)", border: `2px solid ${soft}`, boxShadow: SHADOW }}>
@@ -257,7 +252,7 @@ function QuoteView({ slide, style, color, shadow, dark, align, w, strong, hasFon
     );
   }
   if (layout === "minimal") {
-    const size = fontSize(text.length * 2, text.split("\n").length) * 0.55 * sc;
+    const size = BODY_PX * sc;
     return (
       <div className="absolute inset-0 flex flex-col justify-end px-[150px] py-[130px]" style={{ color, textShadow: shadow, textAlign: align }}>
         <p className="max-w-[1300px]" style={{ fontSize: size, lineHeight: 1.35, fontWeight: w(500), alignSelf: align === "left" ? "flex-start" : "center" }}>{text}</p>
@@ -266,7 +261,7 @@ function QuoteView({ slide, style, color, shadow, dark, align, w, strong, hasFon
     );
   }
   if (layout === "bigmark") {
-    const size = fontSize(text.length * 1.3, text.split("\n").length) * 0.84 * sc;
+    const size = BODY_PX * sc;
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center px-[190px] py-[90px] text-center" style={{ color, textShadow: shadow }}>
         <span aria-hidden className="pointer-events-none absolute left-1/2 top-[40px] -translate-x-1/2 leading-none" style={{ fontSize: 760, opacity: dark ? 0.12 : 0.14, fontFamily: "Georgia, serif" }}>
@@ -278,7 +273,7 @@ function QuoteView({ slide, style, color, shadow, dark, align, w, strong, hasFon
     );
   }
   // classic
-  const size = fontSize(text.length * 1.25, text.split("\n").length) * 0.86 * sc;
+  const size = BODY_PX * sc;
   return (
     <div className="absolute inset-0 flex flex-col justify-center px-[170px] py-[90px]" style={{ color, textShadow: shadow, textAlign: align }}>
       <span aria-hidden className="mb-2 block leading-none" style={{ fontSize: 220, height: 130, opacity: 0.35, fontFamily: "Georgia, serif" }}>
@@ -301,6 +296,52 @@ function TemplateView({ slide, frozen }: { slide: Slide; frozen?: boolean }) {
   return null;
 }
 
+// Full-screen text keeps its fixed size. Only if the text would run off the top or bottom of the screen is everything
+// scaled down (re-wrapping as it goes), just far enough to fit.
+const SAFE_Y = 70;
+function AutoShrink({ children, refit }: { children: React.ReactNode; refit: string }) {
+  const outer = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  const fit = useCallback(() => {
+    const o = outer.current;
+    const el = inner.current;
+    if (!o || !el) return;
+    const box = o.getBoundingClientRect();
+    const ratio = box.height / H;
+    if (!ratio) return;
+    const range = document.createRange();
+    const overflows = () => {
+      let top = Infinity;
+      let bottom = -Infinity;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (!n.nodeValue?.trim()) continue;
+        range.selectNodeContents(n);
+        for (const r of Array.from(range.getClientRects())) {
+          top = Math.min(top, r.top);
+          bottom = Math.max(bottom, r.bottom);
+        }
+      }
+      return top !== Infinity && ((top - box.top) / ratio < SAFE_Y - 1 || (bottom - box.top) / ratio > H - SAFE_Y + 1);
+    };
+    let k = 1;
+    el.style.zoom = "1";
+    for (let i = 0; i < 40 && k > 0.25 && overflows(); i++) {
+      k *= 0.94;
+      el.style.zoom = String(k);
+    }
+  }, []);
+  useLayoutEffect(() => {
+    fit();
+    document.fonts?.ready.then(fit).catch(() => {});
+  }, [fit, refit]);
+  return (
+    <div ref={outer} className="absolute inset-0">
+      <div ref={inner} className="absolute inset-0">{children}</div>
+    </div>
+  );
+}
+
 function SlideView({ slide, style, dark, monitor, hasFont }: { slide: Slide; style: PresentState["style"]; dark: boolean; monitor?: Monitor; hasFont: boolean }) {
   const color = dark ? "#18181b" : "#ffffff";
   const shadow = dark ? "none" : "0 4px 28px rgba(0,0,0,.45)";
@@ -320,9 +361,7 @@ function SlideView({ slide, style, dark, monitor, hasFont }: { slide: Slide; sty
 
   if (slide.kind === "scripture2") {
     const parts = [slide.left, slide.right];
-    const longest = Math.max(...parts.map((p) => p.text.length));
-    // Each column is about half the width, so the text is set smaller than a single verse.
-    const colSize = fontSize(longest * 1.2, 1) * 0.75 * style.scale;
+    const colSize = BODY_PX * style.scale;
     return (
       <div className="absolute inset-0 grid grid-cols-2 gap-0 px-[90px] pb-[80px] pt-[170px]" style={{ color, textShadow: shadow, textAlign: align }}>
         {parts.map((p, i) => (
@@ -339,7 +378,7 @@ function SlideView({ slide, style, dark, monitor, hasFont }: { slide: Slide; sty
   }
 
   const body = slide.text;
-  const size = fontSize(body.length, body.split("\n").length) * style.scale;
+  const size = BODY_PX * style.scale;
 
   // A prayer reads like scripture: just the words, big and clear (the title is only for the operator's list).
   if (slide.kind === "text" && slide.variant === "prayer") {
@@ -380,7 +419,7 @@ function SlideView({ slide, style, dark, monitor, hasFont }: { slide: Slide; sty
       <div className="min-w-0 flex-1" style={{ textAlign: slide.imageUrl ? "left" : align }}>
         {slide.title && <h2 className="mb-10" style={{ fontSize: 84 * style.scale, lineHeight: 1.1, fontWeight: strong(700) }}>{slide.title}</h2>}
         {body && (
-          <p className="whitespace-pre-line" style={{ fontSize: Math.min(size, slide.title ? 62 : 112) * (slide.imageUrl ? 0.8 : 1), lineHeight: 1.35, opacity: slide.title ? 0.9 : 1, fontWeight: style.weight || undefined }}>
+          <p className="whitespace-pre-line" style={{ fontSize: size, lineHeight: 1.35, opacity: slide.title ? 0.9 : 1, fontWeight: style.weight || undefined }}>
             {body}
           </p>
         )}
@@ -446,7 +485,13 @@ export function Stage({ state, className = "", monitor }: { state: PresentState;
             (framed ? (
               <FramedSlide slide={state.slide!} frame={frame!} frameBg={frameBg} style={style} color={dark ? "#18181b" : "#ffffff"} shadow={dark || frameBg ? "none" : "0 3px 20px rgba(0,0,0,.5)"} />
             ) : (
-              <SlideView slide={state.slide!} style={style} dark={dark} monitor={monitor} hasFont={Boolean(font)} />
+              FRAMED_KINDS.has(state.slide!.kind) ? (
+                <AutoShrink refit={`${style.scale}|${style.weight}|${style.font}|${style.align}|${style.quoteLayout}|${style.announcementTemplate}`}>
+                  <SlideView slide={state.slide!} style={style} dark={dark} monitor={monitor} hasFont={Boolean(font)} />
+                </AutoShrink>
+              ) : (
+                <SlideView slide={state.slide!} style={style} dark={dark} monitor={monitor} hasFont={Boolean(font)} />
+              )
             ))}
         </div>
 

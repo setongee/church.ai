@@ -443,9 +443,9 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
   );
 }
 
-// The Songs tab: the hymn book first, then the church's own songs.
+// The Songs tab: opens on the church's own songs (Custom); the hymn book is the other tab.
 export function SongsTab(props: Omit<Props, "category">) {
-  const [sub, setSub] = useState<"hymn" | "song">("hymn");
+  const [sub, setSub] = useState<"hymn" | "song">("song");
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex shrink-0 gap-1 self-start rounded-xl bg-neutral-100 p-1" role="tablist" aria-label="Songs">

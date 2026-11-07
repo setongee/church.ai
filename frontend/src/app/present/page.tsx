@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { AlignCenter, AlignLeft, BellRing, BookOpen, CalendarDays, ChevronLeft, ChevronRight, Columns2, MessageSquare, TriangleAlert, Eraser, Film, HandHeart, Megaphone, Minus, Moon, Music2, Palette, Pause, Play, Plus, Power, PowerOff, RefreshCw, Quote as QuoteIcon, LayoutTemplate, RotateCcw, Sparkles, SkipBack, SkipForward, Square, Volume2, VolumeX } from "lucide-react";
+import { AlignCenter, AlignLeft, BellRing, BookOpen, CalendarDays, ChevronLeft, ChevronRight, Columns2, MessageSquare, TriangleAlert, Eraser, Film, HandHeart, Megaphone, Moon, Music2, Palette, Pause, Play, Power, PowerOff, RefreshCw, Quote as QuoteIcon, LayoutTemplate, RotateCcw, Sparkles, SkipBack, SkipForward, Square, Volume2, VolumeX } from "lucide-react";
 import { getBrand } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -26,6 +26,8 @@ import { SchedulePanel } from "@/components/present/SchedulePanel";
 import { ScripturePanel } from "@/components/present/ScripturePanel";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { useChat } from "@/components/chat/ChatProvider";
+import { Modal } from "@/components/present/ui";
+import { FontSizeControl } from "@/components/present/FontSizeControl";
 import { BatchCard, BatchModal, batchIndex } from "@/components/present/BatchCard";
 import { SplitPanel } from "@/components/present/SplitPanel";
 import { SongsTab } from "@/components/present/SongsPanel";
@@ -447,9 +449,16 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
     schedules.saveSettings({ background: p.background ?? state.background, style: { ...state.style, ...p.style }, ...base, wrapperId: w._id, wrapperBefore: wrapperBefore.current });
   }
 
+  // With sessions in the schedule, ask which one the item goes in (or none); without any, just add it.
+  const [pendingAdd, setPendingAdd] = useState<ScheduleItemInput | null>(null);
   function addToSchedule(item: ScheduleItemInput) {
-    if (!schedules.addItem(item)) return;
-    setToast(`Added “${item.title}” to ${schedules.active?.name}`);
+    if (schedules.active?.sessions?.length) setPendingAdd(item);
+    else finishAdd(item, "");
+  }
+  function finishAdd(item: ScheduleItemInput, sessionId: string) {
+    if (!schedules.addItem(item, sessionId)) return;
+    const into = schedules.active?.sessions?.find((x) => x._id === sessionId);
+    setToast(`Added “${item.title}” to ${into ? `${into.name} · ` : ""}${schedules.active?.name}`);
     setTimeout(() => setToast(""), 2200);
   }
   // A staged prayer previews with its template's look, so what you see is what goes live.
@@ -547,7 +556,7 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
             ))}
           </div>
           <div className="min-h-0 flex-1 bg-neutral-50/40 p-4">
-            {tab === "schedule" && <SchedulePanel schedule={schedules.active} onStage={stage} onLive={goLive} onTrigger={triggerTemplate} onMove={schedules.moveItem} onRemove={schedules.removeItem} onPlayShow={(it) => playShow(it.slides, { seconds: it.show?.seconds ?? 8, loop: it.show?.loop ?? false, name: it.title })} />}
+            {tab === "schedule" && <SchedulePanel schedule={schedules.active} onStage={stage} onLive={goLive} onTrigger={triggerTemplate} onMove={schedules.moveItem} onRemove={schedules.removeItem} onAddSession={schedules.addSession} onRenameSession={schedules.renameSession} onRemoveSession={schedules.removeSession} onAssign={schedules.assignItem} onPlayShow={(it) => playShow(it.slides, { seconds: it.show?.seconds ?? 8, loop: it.show?.loop ?? false, name: it.title })} />}
             {tab === "scripture" && <ScripturePanel bibles={bibles} versionId={versionId} setVersionId={chooseVersion} onManage={user?.isAdmin ? () => setManaging(true) : undefined} onStage={stage} onLive={goLive} onAdd={addToSchedule} onBatch={setBatch} pointsSplitOn={Boolean(state.split?.on)} onPointsSplitOff={() => state.split && patch({ split: { ...state.split, on: false } })} liveReference={state.mode === "live" ? (state.slide?.kind === "scripture" ? state.slide.reference : state.slide?.kind === "scripture2" ? state.slide.left.reference : undefined) : undefined} />}
             {tab === "split" && <SplitPanel deck={state.split} patch={patch} liveSlide={state.mode === "live" ? state.slide : null} />}
             {tab === "songs" && <SongsTab onStage={stage} onLive={goLive} onAdd={addToSchedule} liveSlide={state.mode === "live" ? state.slide : null} />}
@@ -612,13 +621,7 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
                   <AlignCenter size={15} />
                 </IconBtn>
                 <span className="mx-1 h-5 w-px bg-neutral-200" />
-                <IconBtn label="Smaller text" onClick={() => changeLook({ style: { scale: Math.max(0.5, +(state.style.scale - 0.1).toFixed(2)) } })}>
-                  <Minus size={15} />
-                </IconBtn>
-                <span className="w-10 text-center text-xs font-semibold tabular-nums text-neutral-600">{Math.round(state.style.scale * 100)}%</span>
-                <IconBtn label="Bigger text" onClick={() => changeLook({ style: { scale: Math.min(1.6, +(state.style.scale + 0.1).toFixed(2)) } })}>
-                  <Plus size={15} />
-                </IconBtn>
+                <FontSizeControl scale={state.style.scale} onChange={(scale) => changeLook({ style: { scale } })} iconBtn="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-600 hover:bg-neutral-100 hover:text-orange-600 disabled:opacity-40" />
               </div>
             </div>
         </div>
@@ -750,6 +753,27 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
         </div>
       )}
 
+      {pendingAdd && (
+        <Modal title="Add to which session?" onClose={() => setPendingAdd(null)}>
+          <p className="mb-3 truncate text-sm text-neutral-500">“{pendingAdd.title}”</p>
+          <div className="space-y-2">
+            {[{ _id: "", name: "No session" }, ...(schedules.active?.sessions ?? [])].map((x) => (
+              <button
+                key={x._id || "none"}
+                autoFocus={!x._id}
+                onClick={() => {
+                  finishAdd(pendingAdd, x._id);
+                  setPendingAdd(null);
+                }}
+                className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm font-semibold transition hover:border-orange-300 hover:bg-orange-50 ${x._id ? "border-neutral-200 text-neutral-900" : "border-dashed border-neutral-300 text-neutral-600"}`}
+              >
+                {x.name}
+                {x._id && <span className="text-xs font-medium text-neutral-400">{schedules.active?.items.filter((i) => i.session === x._id).length} items</span>}
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
       {confirmReload && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" role="alertdialog" aria-modal="true" aria-labelledby="reload-title" onClick={() => setConfirmReload(false)}>
           <div className="w-full max-w-md rounded-2xl bg-white p-6" onClick={(e) => e.stopPropagation()}>

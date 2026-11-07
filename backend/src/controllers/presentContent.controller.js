@@ -37,7 +37,7 @@ export async function saveSceneTemplate(req, res) {
     frame: cleanFrame(req.body?.frame),
     frameBg: cleanBackground(req.body?.frameBg),
     align: req.body?.align === 'left' ? 'left' : 'center',
-    scale: Math.min(2, Math.max(0.3, Number(req.body?.scale) || 1)),
+    scale: Math.min(3.4, Math.max(0.3, Number(req.body?.scale) || 1)),
     // Looks of its own for scripture / song / prayer (anything not set uses the template's default look above).
     sections: req.body?.kind === 'prayer' ? null : cleanSections(req.body?.sections),
   };

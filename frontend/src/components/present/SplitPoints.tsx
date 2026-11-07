@@ -1,19 +1,19 @@
 "use client";
 
 import { useCallback, useLayoutEffect, useRef } from "react";
-import type { PresentState, SplitPage } from "@/lib/present";
+import { BODY_PX, type PresentState, type SplitPage } from "@/lib/present";
 
-// The left half of the split screen: key points typed in the Split tab. Sized to fill its panel - it
-// starts big and steps down until everything fits.
+// The left half of the split screen: key points typed in the Split tab. Fixed size; it only steps down if the points
+// would overflow the panel.
 export function SplitPoints({ page, title, style, dark }: { page: SplitPage; title?: string; style: PresentState["style"]; dark: boolean }) {
-  const content = useRef<HTMLDivElement>(null);
   const weight = style.weight || 500;
   const color = dark ? "#18181b" : "#ffffff";
 
+  const content = useRef<HTMLDivElement>(null);
   const fit = useCallback(() => {
     const el = content.current;
     if (!el) return;
-    let size = 64 * style.scale;
+    let size = BODY_PX * style.scale;
     el.style.fontSize = `${size}px`;
     for (let i = 0; i < 45 && size > 18 && el.scrollHeight > el.clientHeight + 1; i++) {
       size = Math.floor(size * 0.94);

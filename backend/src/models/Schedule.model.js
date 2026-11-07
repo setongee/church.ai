@@ -11,7 +11,12 @@ const itemSchema = new mongoose.Schema({
   title: { type: String, default: '' },
   subtitle: { type: String, default: '' },
   slides: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  // The id of the session (a named group inside the schedule, e.g. "Praise") this item sits in; '' = not in one.
+  session: { type: String, default: '' },
 });
+
+// A session is a sub-schedule: a named group of items inside a schedule.
+const sessionSchema = new mongoose.Schema({ name: { type: String, required: true, trim: true } });
 
 // A named run-of-service. `settings` is the look of the screen while this schedule is active
 // ({ background, style: { align, scale, font, weight } }).
@@ -19,6 +24,7 @@ const scheduleSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
     items: { type: [itemSchema], default: [] },
+    sessions: { type: [sessionSchema], default: [] },
     settings: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
   { timestamps: true, minimize: false }

@@ -1,7 +1,8 @@
 "use client";
 
+import { FontSizeControl } from "./FontSizeControl";
 import { useState } from "react";
-import { AlignCenter, AlignLeft, Minus, Plus } from "lucide-react";
+import { AlignCenter, AlignLeft } from "lucide-react";
 import { FrameEditor } from "./FrameEditor";
 import { BackgroundField } from "./BackgroundPicker";
 import { inputCls } from "./ui";
@@ -157,13 +158,7 @@ export function SceneEditor({ slide, look, initial, onSave, onClose, prayer }: P
                 </button>
               ))}
               <span className="mx-1 h-5 w-px bg-neutral-200" />
-              <button onClick={() => change({ scale: Math.max(0.5, +(activeStyle.scale - 0.1).toFixed(2)) })} aria-label="Smaller text" className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100">
-                <Minus size={16} />
-              </button>
-              <span className="w-12 text-center text-sm font-semibold tabular-nums text-neutral-600">{Math.round(activeStyle.scale * 100)}%</span>
-              <button onClick={() => change({ scale: Math.min(1.6, +(activeStyle.scale + 0.1).toFixed(2)) })} aria-label="Bigger text" className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100">
-                <Plus size={16} />
-              </button>
+              <FontSizeControl scale={activeStyle.scale} onChange={(scale) => change({ scale })} size={16} iconBtn="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 disabled:opacity-40" />
             </div>
           </section>
         </>
