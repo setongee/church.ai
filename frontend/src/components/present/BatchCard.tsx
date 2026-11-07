@@ -60,7 +60,7 @@ export function BatchModal({ batch, state, onPick, onClose }: { batch: Scripture
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-neutral-950/95 p-6 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-[70] flex flex-col bg-neutral-950/95 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-white">
           {batch.label} <span className="ml-2 text-sm font-medium text-neutral-400">{batch.version} · click a verse to put it live</span>

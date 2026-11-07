@@ -10,6 +10,8 @@ const songSchema = new mongoose.Schema(
     // Hymns live in their own panel; `number` is the hymn-book number (a string, so "12a" works).
     category: { type: String, enum: ['song', 'hymn'], default: 'song', index: true },
     number: { type: String, default: '', trim: true },
+    // How the "(…)" translation lines look on screen: { scale, color, italic }. Unset = the default look.
+    translationLook: { type: mongoose.Schema.Types.Mixed, default: undefined },
   },
   { timestamps: true }
 );

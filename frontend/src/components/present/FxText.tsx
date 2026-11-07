@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import type { EffectId, TextEffect } from "@/lib/present";
+import { DEFAULT_TRANSLATION_LOOK, isTranslationLine, type EffectId, type TextEffect, type TranslationLook } from "@/lib/present";
 
 // One cycle, in seconds, at normal speed. "rise" is the length of a single line's entrance.
 const BASE_SECONDS: Record<EffectId, number> = { pulse: 2.4, glow: 3, neon: 2.6, outline: 2.8, shimmer: 3.4, float: 4, rise: 0.9, wave: 1.8 };
@@ -61,5 +61,33 @@ export function FxText({ text, effect, base = "#ffffff", className = "", style }
     <p className={`${className} fx-${effect.id}`} style={{ ...style, ...vars }}>
       {text}
     </p>
+  );
+}
+
+// Song lyrics where "(…)" lines are translations: those are set smaller, in their own colour, under the lyric line, and never
+// get the motion effect. Without any translation line this is exactly FxText.
+export function SongText({ text, effect, base = "#ffffff", className = "", style, look }: { text: string; effect?: TextEffect | null; base?: string; className?: string; style?: CSSProperties; look?: TranslationLook }) {
+  const lines = text.split("\n");
+  if (!lines.some(isTranslationLine)) return <FxText text={text} effect={effect} base={base} className={className} style={style} />;
+  const l = { ...DEFAULT_TRANSLATION_LOOK, ...look };
+  const segments: { tr: boolean; lines: string[] }[] = [];
+  for (const line of lines) {
+    const tr = isTranslationLine(line);
+    const last = segments[segments.length - 1];
+    if (last && last.tr === tr) last.lines.push(line);
+    else segments.push({ tr, lines: [line] });
+  }
+  return (
+    <div className={className} style={style}>
+      {segments.map((seg, i) =>
+        seg.tr ? (
+          <p key={i} style={{ fontSize: `${l.scale}em`, lineHeight: 1.2, margin: "0.12em 0 0.35em", fontStyle: l.italic ? "italic" : "normal", ...(l.color ? { color: l.color } : { opacity: 0.8 }) }}>
+            {seg.lines.map((x) => x.trim()).join("\n")}
+          </p>
+        ) : (
+          <FxText key={i} text={seg.lines.join("\n")} effect={effect} base={base} className="whitespace-pre-line" />
+        ),
+      )}
+    </div>
   );
 }

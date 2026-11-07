@@ -160,8 +160,8 @@ export function WrapperManager({ wrappers, templates, activeId, baseBackground, 
     ].filter(Boolean) as string[];
 
   return createPortal(
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && !busy && (editing ? setEditing(null) : onClose())}>
-      <div role="dialog" aria-modal="true" aria-label="Service wrappers" className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && !busy && (editing ? setEditing(null) : onClose())}>
+      <div role="dialog" aria-modal="true" aria-label="Service wrappers" className="sheet-anim flex max-h-[94dvh] w-full max-w-5xl flex-col overflow-hidden rounded-b-none rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl sm:rounded-3xl sm:pb-0">
         <div className="flex items-center gap-3 border-b border-neutral-100 px-5 py-4 sm:px-7">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-orange-100 text-orange-700">
             <Package size={18} />
@@ -229,8 +229,8 @@ export function WrapperManager({ wrappers, templates, activeId, baseBackground, 
       </div>
 
       {deleting && (
-        <div className="fixed inset-0 z-[80] grid place-items-center bg-black/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && setDeleting(null)}>
-          <div role="alertdialog" aria-label="Delete wrapper" className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && setDeleting(null)}>
+          <div role="alertdialog" aria-label="Delete wrapper" className="sheet-anim w-full max-w-sm rounded-b-none rounded-t-2xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-2xl sm:p-6">
             <h3 className="text-base font-semibold text-neutral-900">Delete “{deleting.name}”?</h3>
             <p className="mt-1.5 text-sm text-neutral-500">{deleting.name === wrappers.find((w) => w._id === activeId)?.name ? "It’s on this service right now, so the screen goes back to how it was. " : ""}Schedules that used it keep their own look.</p>
             <div className="mt-5 flex justify-end gap-2">

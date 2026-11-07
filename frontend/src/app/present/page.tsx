@@ -555,7 +555,7 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
               </button>
             ))}
           </div>
-          <div className="min-h-0 flex-1 bg-neutral-50/40 p-4">
+          <div className="min-h-0 flex-1 bg-neutral-50/40 p-3 sm:p-4">
             {tab === "schedule" && <SchedulePanel schedule={schedules.active} onStage={stage} onLive={goLive} onTrigger={triggerTemplate} onMove={schedules.moveItem} onRemove={schedules.removeItem} onAddSession={schedules.addSession} onRenameSession={schedules.renameSession} onRemoveSession={schedules.removeSession} onAssign={schedules.assignItem} onPlayShow={(it) => playShow(it.slides, { seconds: it.show?.seconds ?? 8, loop: it.show?.loop ?? false, name: it.title })} />}
             {tab === "scripture" && <ScripturePanel bibles={bibles} versionId={versionId} setVersionId={chooseVersion} onManage={user?.isAdmin ? () => setManaging(true) : undefined} onStage={stage} onLive={goLive} onAdd={addToSchedule} onBatch={setBatch} pointsSplitOn={Boolean(state.split?.on)} onPointsSplitOff={() => state.split && patch({ split: { ...state.split, on: false } })} liveReference={state.mode === "live" ? (state.slide?.kind === "scripture" ? state.slide.reference : state.slide?.kind === "scripture2" ? state.slide.left.reference : undefined) : undefined} />}
             {tab === "split" && <SplitPanel deck={state.split} patch={patch} liveSlide={state.mode === "live" ? state.slide : null} />}
@@ -611,7 +611,7 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
               </button>
             </div>
 
-            <div className="flex items-center justify-between gap-2 border-t border-neutral-100 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-100 pt-3">
               <span className="text-xs font-semibold text-neutral-500">Text</span>
               <div className="flex items-center gap-1">
                 <IconBtn label="Align left" on={state.style.align === "left"} onClick={() => changeLook({ style: { align: "left" } })}>
@@ -775,8 +775,8 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
         </Modal>
       )}
       {confirmReload && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" role="alertdialog" aria-modal="true" aria-labelledby="reload-title" onClick={() => setConfirmReload(false)}>
-          <div className="w-full max-w-md rounded-2xl bg-white p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" role="alertdialog" aria-modal="true" aria-labelledby="reload-title" onClick={() => setConfirmReload(false)}>
+          <div className="sheet-anim w-full max-w-md rounded-b-none rounded-t-2xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-2xl sm:p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start gap-3">
               <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${isLive ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-800"}`}>
                 <TriangleAlert size={20} />

@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookMarked, CalendarPlus, FileUp, Loader2, Music2, Languages, Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react";
-import { EFFECT_COLORS, EFFECT_SPEEDS, TEXT_EFFECTS, deleteSong, importSongs, listSongs, saveSong, songSlides, titleCase, translateLyrics, type EffectSpeed, type ScheduleItemInput, type Slide, type Song, type SongImportResult, type TextEffect } from "@/lib/present";
-import { FxText } from "./FxText";
+import { BookMarked, CalendarPlus, FileUp, Loader2, Music2, Languages, Parentheses, Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react";
+import { EFFECT_COLORS, EFFECT_SPEEDS, TEXT_EFFECTS, deleteSong, importSongs, listSongs, applyTranslationLookToAll, DEFAULT_TRANSLATION_LOOK, isTranslationLine, saveSong, songSlides, titleCase, toggleTranslationLines, translateLyrics, type TranslationLook, type EffectSpeed, type ScheduleItemInput, type Slide, type Song, type SongImportResult, type TextEffect } from "@/lib/present";
+import { FxText, SongText } from "./FxText";
 import { SongFinder } from "./SongFinder";
 import { btnGhost, btnPrimary, Empty, Field, inputCls, Modal } from "./ui";
 
@@ -23,7 +23,9 @@ const NO_FX: SongFx = { all: null, slides: {} };
 const fxKey = (id: string) => `present-song-fx:${id}`;
 const sameSong = (a: Slide, b: Slide) => a.kind === "song" && b.kind === "song" && a.title === b.title && a.text === b.text && a.label === b.label;
 
-const BLANK = { title: "", author: "", lyrics: "", number: "" };
+type Draft = { title: string; author: string; lyrics: string; number: string; translationLook?: TranslationLook };
+const BLANK: Draft = { title: "", author: "", lyrics: "", number: "" };
+const TR_COLORS = ["#fde68a", "#93c5fd", "#86efac", "#fca5a5", "#d4d4d4"];
 
 export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song" }: Props) {
   const hymns = category === "hymn";
@@ -32,7 +34,7 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
   const [q, setQ] = useState("");
   const [activeId, setActiveId] = useState("");
   const [slideIdx, setSlideIdx] = useState(-1);
-  const [editing, setEditing] = useState<{ id?: string; draft: typeof BLANK } | null>(null);
+  const [editing, setEditing] = useState<{ id?: string; draft: Draft } | null>(null);
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
   const [finding, setFinding] = useState(false);
@@ -41,6 +43,8 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
   const [importDraft, setImportDraft] = useState({ title: "", author: "" });
   const [importFile, setImportFile] = useState<File | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const lyricsBox = useRef<HTMLTextAreaElement>(null);
+  const [lookMsg, setLookMsg] = useState("");
   // AI "translate foreign words": the result waits here for review and only replaces the lyrics when applied.
   const [tr, setTr] = useState<{ busy: boolean; error: string; proposal: string; added: number } | null>(null);
 
@@ -105,6 +109,34 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
       setTr({ busy: false, error: "", proposal: r.lyrics, added: r.added });
     } catch (e) {
       setTr({ busy: false, error: e instanceof Error ? e.message : "Couldn't translate", proposal: "", added: 0 });
+    }
+  }
+
+  // Wraps the lines the cursor/selection touches in ( ) - or takes the brackets off if they are all translations already.
+  function toggleTranslation() {
+    const box = lyricsBox.current;
+    if (!editing || !box) return;
+    const text = editing.draft.lyrics;
+    const start = text.lastIndexOf("\n", box.selectionStart - 1) + 1;
+    let end = text.indexOf("\n", box.selectionEnd);
+    if (end < 0) end = text.length;
+    const next = toggleTranslationLines(text.slice(start, end).split("\n")).join("\n");
+    setEditing({ ...editing, draft: { ...editing.draft, lyrics: text.slice(0, start) + next + text.slice(end) } });
+    requestAnimationFrame(() => {
+      box.focus();
+      box.setSelectionRange(start, start + next.length);
+    });
+  }
+  const look: TranslationLook = { ...DEFAULT_TRANSLATION_LOOK, ...editing?.draft.translationLook };
+  const setLook = (patch: Partial<TranslationLook>) => editing && setEditing({ ...editing, draft: { ...editing.draft, translationLook: { ...look, ...patch } } });
+  async function applyLookToAll() {
+    if (!confirm("Use this translation look for every song and hymn?")) return;
+    try {
+      const r = await applyTranslationLookToAll(look);
+      setLookMsg(`Applied to ${r.updated} song${r.updated === 1 ? "" : "s"}.`);
+      await refresh();
+    } catch (e) {
+      setLookMsg(e instanceof Error ? e.message : "Couldn't apply it");
     }
   }
 
@@ -230,7 +262,7 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
                 <button onClick={() => onAdd({ type: "song", title: titleCase(active.title), subtitle: active.author, slides })} className={btnGhost}>
                   <CalendarPlus size={15} /> Add to schedule
                 </button>
-                <button onClick={() => setEditing({ id: active._id, draft: { title: titleCase(active.title), author: active.author, lyrics: active.lyrics, number: active.number ?? "" } })} className={btnGhost}>
+                <button onClick={() => setEditing({ id: active._id, draft: { title: titleCase(active.title), author: active.author, lyrics: active.lyrics, number: active.number ?? "", translationLook: active.translationLook } })} className={btnGhost}>
                   <Pencil size={15} /> Edit
                 </button>
                 <button onClick={() => remove(active)} aria-label={`Delete ${noun}`} className={`${btnGhost} text-red-600`}>
@@ -302,7 +334,7 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
                         {s.label || `Slide ${i + 1}`}
                         {s.effect && <span className="rounded-full bg-[#171717] px-1.5 py-0.5 text-[9px] text-[#ffffff]">{TEXT_EFFECTS.find((e) => e.id === s.effect!.id)?.label}</span>}
                       </span>
-                      <span className="line-clamp-5 whitespace-pre-line text-[13px] leading-snug text-neutral-800">{s.text}</span>
+                      <span className="line-clamp-5 whitespace-pre-line text-[13px] leading-snug text-neutral-800">{s.text.split("\n").map((l, k) => (isTranslationLine(l) ? <span key={k} className="block text-[11px] italic text-neutral-400">{l.trim()}</span> : <span key={k} className="block">{l}</span>))}</span>
                     </>
                   )}
                 </button>
@@ -391,11 +423,14 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
             </div>
             <div>
               <div className="mb-2 flex flex-wrap items-center gap-2">
+                <button type="button" onClick={toggleTranslation} title="Select lines (or put the cursor on one), then click: wraps them in ( ) so they show as a smaller translation" className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-orange-300 hover:text-orange-700">
+                  <Parentheses size={14} /> Mark as translation
+                </button>
                 <button type="button" onClick={translate} disabled={tr?.busy || editing.draft.lyrics.trim().length < 3} className="inline-flex items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50">
                   {tr?.busy ? <Loader2 size={14} className="animate-spin" /> : <Languages size={14} />}
                   {tr?.busy ? "Translating…" : "AI: translate foreign words"}
                 </button>
-                <span className="text-xs text-neutral-400">Adds the English in (brackets) under each non-English line. You review it before it’s used.</span>
+                <span className="text-xs text-neutral-400">A line in (brackets) is a translation: shown smaller, in the look below.</span>
               </div>
               {tr?.error && <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{tr.error}</p>}
               {tr && !tr.busy && !tr.error && (
@@ -420,6 +455,7 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
               )}
               <Field label="Lyrics" hint="A blank line starts a new slide. Put [Verse 1], [Chorus], [Bridge] on its own line to label the slide.">
               <textarea
+                ref={lyricsBox}
                 value={editing.draft.lyrics}
                 onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, lyrics: e.target.value } })}
                 rows={14}
@@ -427,6 +463,39 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
                 className={`${inputCls} font-mono leading-relaxed`}
               />
               </Field>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3" data-no-guard>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Translation look</div>
+              <div className="grid gap-3 sm:grid-cols-[1fr_14rem]">
+                <div className="space-y-3 text-sm">
+                  <label className="flex items-center gap-3">
+                    <span className="w-14 shrink-0 text-xs font-semibold text-neutral-600">Size</span>
+                    <input type="range" min={30} max={100} step={5} value={Math.round(look.scale * 100)} onChange={(e) => setLook({ scale: Number(e.target.value) / 100 })} className="min-w-0 flex-1 accent-orange-600" />
+                    <span className="w-24 shrink-0 text-right text-xs tabular-nums text-neutral-500">{Math.round(look.scale * 100)}% of lyrics</span>
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-14 shrink-0 text-xs font-semibold text-neutral-600">Colour</span>
+                    <button type="button" data-no-guard onClick={() => setLook({ color: "" })} aria-pressed={!look.color} className={`rounded-full px-2.5 py-1 text-xs font-semibold ${!look.color ? "bg-orange-600 text-[#ffffff]" : "bg-white text-neutral-600 ring-1 ring-neutral-200"}`}>
+                      Same as lyrics
+                    </button>
+                    {TR_COLORS.map((c) => (
+                      <button key={c} type="button" data-no-guard onClick={() => setLook({ color: c })} aria-label={`Translation colour ${c}`} aria-pressed={look.color === c} className={`h-6 w-6 rounded-full border-2 ${look.color === c ? "scale-110 border-neutral-900" : "border-white ring-1 ring-neutral-300"}`} style={{ background: c }} />
+                    ))}
+                    <input type="color" value={look.color || "#ffffff"} onChange={(e) => setLook({ color: e.target.value })} aria-label="Custom translation colour" className="h-7 w-9 cursor-pointer rounded border border-neutral-200 bg-white p-0.5" />
+                  </div>
+                  <label className="flex items-center gap-2 text-xs font-semibold text-neutral-600">
+                    <input type="checkbox" checked={look.italic} onChange={(e) => setLook({ italic: e.target.checked })} className="accent-orange-600" /> Italic
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" data-no-guard onClick={() => setLook(DEFAULT_TRANSLATION_LOOK)} className={`${btnGhost} !py-1 text-xs`}>Reset</button>
+                    <button type="button" data-no-guard onClick={applyLookToAll} className={`${btnGhost} !py-1 text-xs`}>Use for all songs</button>
+                    {lookMsg && <span className="text-xs text-neutral-500">{lookMsg}</span>}
+                  </div>
+                </div>
+                <div className="grid place-items-center rounded-lg bg-neutral-900 p-3 text-center text-white" aria-label="Preview">
+                  <SongText text={"Olorun mi, mo yin O\n(My God, I praise You)"} look={look} className="text-lg font-semibold leading-snug" />
+                </div>
+              </div>
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => (setEditing(null), setTr(null))} className={btnGhost}>

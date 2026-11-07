@@ -5,7 +5,7 @@ import { loadFont } from "@/lib/fonts";
 import { GivingPromo } from "./GivingPromo";
 import { WelcomePromo } from "./WelcomePromo";
 import { HighlightedText } from "./HighlightedText";
-import { FxText } from "./FxText";
+import { SongText } from "./FxText";
 import { AlertBanner } from "./AlertBanner";
 import { AnnouncementView } from "./AnnouncementView";
 import { SplitPoints } from "./SplitPoints";
@@ -128,7 +128,7 @@ function FramedSlide({ slide, frame, frameBg, style, color, shadow }: { slide: S
         {part(slide.right)}
       </div>
     );
-  } else if (slide.kind === "song") body = <FxText text={slide.text} effect={slide.effect} base={color} className="whitespace-pre-line" style={{ lineHeight: 1.22, fontWeight: weight + (weight < 700 ? 100 : 0) }} />;
+  } else if (slide.kind === "song") body = <SongText text={slide.text} effect={slide.effect} base={color} look={slide.tr} className="whitespace-pre-line" style={{ lineHeight: 1.22, fontWeight: weight + (weight < 700 ? 100 : 0) }} />;
   else if (slide.kind === "quote") {
     body = (
       <>
@@ -404,7 +404,7 @@ function SlideView({ slide, style, dark, monitor, hasFont }: { slide: Slide; sty
   if (slide.kind === "song") {
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center px-[140px] py-[90px]" style={{ color, textShadow: shadow, textAlign: align }}>
-        <FxText text={body} effect={slide.effect} base={color} className="whitespace-pre-line" style={{ fontSize: size, lineHeight: 1.3, fontWeight: w(600) }} />
+        <SongText text={body} effect={slide.effect} base={color} look={slide.tr} className="whitespace-pre-line" style={{ fontSize: size, lineHeight: 1.3, fontWeight: w(600) }} />
       </div>
     );
   }

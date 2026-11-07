@@ -247,6 +247,12 @@ body {
 /* Present screen transitions */
 @keyframes present-fade-in { from { opacity: 0 } to { opacity: 1 } }
 @keyframes present-slide-up { from { transform: translateY(100%) } to { transform: translateY(0) } }
+/* Touch screens have no hover, so actions that only appear on hover (edit, remove, move) are always shown there. */
+@media (hover: none) { [class*="group-hover:opacity-100"] { opacity: 1 !important } }
+
+/* Phone modals are bottom sheets: they slide up from the bottom edge (square bottom corners, rounded top). From sm up they stay centred. */
+@keyframes sheet-up { from { transform: translateY(100%) } to { transform: translateY(0) } }
+@media (max-width: 639px) { .sheet-anim { animation: sheet-up .24s cubic-bezier(.2,.8,.2,1) both } }
 .present-fade { animation: present-fade-in .35s ease-out both }
 .present-slide-up { animation: present-slide-up .4s cubic-bezier(.2,.8,.2,1) both }
 @keyframes present-kenburns { from { transform: scale(1) } to { transform: scale(1.14) } }

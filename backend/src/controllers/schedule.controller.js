@@ -44,6 +44,18 @@ const EFFECT_SPEEDS = new Set(['slow', 'normal', 'fast']);
 // A song slide's text effect, or undefined.
 const cleanEffect = (e) => (e && EFFECT_IDS.has(e.id) ? { id: e.id, speed: EFFECT_SPEEDS.has(e.speed) ? e.speed : undefined, color: /^#[0-9a-f]{6}$/i.test(e.color) ? e.color : undefined } : undefined);
 
+// How a song's translation lines (the "(…)" lines) look: size as a share of the lyric size, an optional colour (none = the
+// lyrics' own colour, a little dimmer) and italic.
+export function cleanTranslationLook(l) {
+  if (!l || typeof l !== 'object') return undefined;
+  const scale = Number(l.scale);
+  return {
+    scale: Number.isFinite(scale) ? Math.min(1.2, Math.max(0.3, scale)) : 0.6,
+    color: /^#[0-9a-f]{6}$/i.test(l.color) ? l.color : '',
+    italic: l.italic === undefined ? true : Boolean(l.italic),
+  };
+}
+
 export function cleanSlide(s) {
   if (!s || !KINDS.has(s.kind)) return null;
   if (s.kind === 'image') return s.url ? { kind: 'image', url: str(s.url, 1000) } : null;
@@ -113,7 +125,7 @@ export function cleanSlide(s) {
   if (s.kind === 'quote') return { kind: 'quote', text: str(s.text, 4000), attribution: s.attribution ? str(s.attribution, 200) : undefined, background: cleanBackground(s.background) ?? undefined };
   if (s.kind === 'scripture2') return s.left && s.right ? { kind: 'scripture2', left: cleanPart(s.left), right: cleanPart(s.right) } : null;
   if (s.kind === 'scripture') return { kind: 'scripture', ...cleanPart(s) };
-  if (s.kind === 'song') return { kind: 'song', title: str(s.title, 200), label: s.label ? str(s.label, 60) : undefined, text: str(s.text, 4000), effect: cleanEffect(s.effect) };
+  if (s.kind === 'song') return { kind: 'song', title: str(s.title, 200), label: s.label ? str(s.label, 60) : undefined, text: str(s.text, 4000), effect: cleanEffect(s.effect), tr: cleanTranslationLook(s.tr) };
   const layout = ANNOUNCEMENT_LAYOUTS.has(s.layout) && s.layout !== 'classic' ? s.layout : undefined;
   const variant = s.variant === 'prayer' ? 'prayer' : undefined;
   return { kind: 'text', variant, scene: variant && s.scene ? cleanScene(s.scene) : undefined, layout, kicker: layout && s.kicker ? str(s.kicker, 60) : undefined, accent: layout && /^#[0-9a-f]{6}$/i.test(s.accent) ? s.accent : undefined, title: s.title ? str(s.title, 200) : undefined, text: str(s.text, 4000), imageUrl: s.imageUrl ? str(s.imageUrl, 1000) : undefined, background: cleanBackground(s.background) ?? undefined };

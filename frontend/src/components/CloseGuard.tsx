@@ -61,8 +61,8 @@ export function useCloseGuard(onClose: () => void, { enabled = true, extra = fal
   );
 
   const dialog: ReactNode = asking ? (
-    <div data-close-guard-dialog className="fixed inset-0 z-[200] grid place-items-center bg-black/50 p-4" role="alertdialog" aria-modal="true" aria-labelledby="close-guard-title" onMouseDown={(e) => e.stopPropagation()}>
-      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+    <div data-close-guard-dialog className="fixed inset-0 z-[200] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" role="alertdialog" aria-modal="true" aria-labelledby="close-guard-title" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="sheet-anim w-full max-w-sm rounded-b-none rounded-t-2xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-2xl sm:pb-5">
         <h3 id="close-guard-title" className="text-base font-semibold text-neutral-900">Close without saving?</h3>
         <p className="mt-1.5 text-sm text-neutral-600">You have changes that haven’t been saved. If you close this now, they’ll be lost.</p>
         <div className="mt-5 flex justify-end gap-2">

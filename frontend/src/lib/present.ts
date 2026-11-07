@@ -82,7 +82,7 @@ export type Slide =
   | ({ kind: "scripture" } & ScripturePart)
   // Two scriptures side by side: the same verse in two versions, or two different passages.
   | { kind: "scripture2"; left: ScripturePart; right: ScripturePart }
-  | { kind: "song"; title: string; label?: string; text: string; effect?: TextEffect }
+  | { kind: "song"; title: string; label?: string; text: string; effect?: TextEffect; tr?: TranslationLook }
   // `variant: "prayer"` shows the words in the scripture style (no title); `scene` is the prayer template's look, applied when it goes live.
   | { kind: "text"; title?: string; text: string; imageUrl?: string; background?: Background; layout?: AnnouncementTemplateId; kicker?: string; accent?: string; variant?: "prayer"; scene?: TemplateScene }
   | { kind: "image"; url: string } // pictures and GIFs
@@ -439,6 +439,21 @@ export type SmartResult =
 export const bibleSmart = (id: string, q: string) => req<SmartResult>(`/bibles/${id}/smart?q=${encodeURIComponent(q)}`);
 export const bibleFind = (id: string, q: string) => req<FindResult>(`/bibles/${id}/find?q=${encodeURIComponent(q)}`);
 
+// A line wrapped in round brackets - "(My God)" - is a translation: it is shown smaller, under its lyric line, in its own
+// look (size as a share of the lyric size, an optional colour - none = the lyrics' colour, a little dimmer - and italic).
+export interface TranslationLook {
+  scale: number;
+  color: string;
+  italic: boolean;
+}
+export const DEFAULT_TRANSLATION_LOOK: TranslationLook = { scale: 0.6, color: "", italic: true };
+export const isTranslationLine = (line: string) => /^\(.+\)$/.test(line.trim());
+export const toggleTranslationLines = (lines: string[]) => {
+  const filled = lines.filter((l) => l.trim());
+  const allTranslations = filled.length > 0 && filled.every(isTranslationLine);
+  return lines.map((l) => (!l.trim() ? l : allTranslations ? l.trim().replace(/^\(\s*/, "").replace(/\s*\)$/, "") : isTranslationLine(l) ? l : `(${l.trim()})`));
+};
+
 export interface Song {
   _id: string;
   title: string;
@@ -446,8 +461,9 @@ export interface Song {
   lyrics: string;
   category?: "song" | "hymn";
   number?: string;
+  translationLook?: TranslationLook;
 }
-export type SongInput = Pick<Song, "title" | "author" | "lyrics" | "category" | "number">;
+export type SongInput = Pick<Song, "title" | "author" | "lyrics" | "category" | "number" | "translationLook">;
 export const listSongs = (q = "", category: "song" | "hymn" = "song") => req<Song[]>(`/songs?q=${encodeURIComponent(q)}&category=${category}`);
 export const saveSong = (input: SongInput, id?: string) => req<Song>(id ? `/songs/${id}` : "/songs", { method: id ? "PUT" : "POST", body: JSON.stringify(input) });
 export interface SongImportResult {
@@ -477,6 +493,7 @@ export interface SongFindResponse {
 }
 export const findSongs = (q: string) => req<SongFindResponse>("/songs/find", { method: "POST", body: JSON.stringify({ q }) });
 export const translateLyrics = (lyrics: string) => req<{ lyrics: string; added: number }>("/songs/translate", { method: "POST", body: JSON.stringify({ lyrics }) });
+export const applyTranslationLookToAll = (look: TranslationLook) => req<{ updated: number }>("/songs/translation-look", { method: "POST", body: JSON.stringify({ look }) });
 export const deleteSong = (id: string) => req<{ ok: boolean }>(`/songs/${id}`, { method: "DELETE" });
 
 export interface Announcement {
@@ -714,7 +731,7 @@ export function titleCase(input: string): string {
 }
 
 // Blank lines split slides; a "[Chorus]" / "Verse 2:" line on its own labels the slide after it.
-export function songSlides(song: Pick<Song, "title" | "lyrics">): Slide[] {
+export function songSlides(song: Pick<Song, "title" | "lyrics"> & { translationLook?: TranslationLook }): Slide[] {
   const out: Slide[] = [];
   for (const block of song.lyrics.replace(/\r/g, "").split(/\n\s*\n/)) {
     const lines = block.split("\n").map((l) => l.trimEnd()).filter((l, i, a) => l.trim() || i < a.length);
@@ -725,7 +742,7 @@ export function songSlides(song: Pick<Song, "title" | "lyrics">): Slide[] {
       lines.shift();
     }
     const text = lines.join("\n").trim();
-    if (text) out.push({ kind: "song", title: titleCase(song.title), label, text });
+    if (text) out.push({ kind: "song", title: titleCase(song.title), label, text, ...(text.split("\n").some(isTranslationLine) ? { tr: { ...DEFAULT_TRANSLATION_LOOK, ...song.translationLook } } : {}) });
   }
   return out;
 }

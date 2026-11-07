@@ -21,15 +21,16 @@ export function Modal({ title, onClose, children, wide, guard }: { title: string
     return () => document.removeEventListener("keydown", onKey);
   }, [escape]);
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && request()}>
-      <div ref={bindPanel} onClickCapture={onClickCapture} className={`flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-2xl ${wide ? "max-w-3xl" : "max-w-lg"}`}>
-        <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && request()}>
+      <div ref={bindPanel} onClickCapture={onClickCapture} className={`sheet-anim flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-b-none rounded-t-2xl border border-neutral-100 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl sm:max-h-[90vh] sm:rounded-2xl sm:pb-0 ${wide ? "max-w-3xl" : "max-w-lg"}`}>
+        <div aria-hidden className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-neutral-300 sm:hidden" />
+        <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3 sm:px-5 sm:py-4">
           <h2 className="text-base font-semibold text-neutral-900">{title}</h2>
           <button onClick={request} aria-label="Close" className="rounded-lg p-1.5 text-neutral-500 hover:bg-neutral-100">
             <X size={18} />
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">{children}</div>
       </div>
       {dialog}
     </div>

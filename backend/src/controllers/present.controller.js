@@ -2,6 +2,7 @@ import { env } from '../config/env.js';
 import { Song } from '../models/Song.model.js';
 import { extractText, parseSong } from '../services/songImport.service.js';
 import { titleCase } from '../services/titleCase.js';
+import { cleanTranslationLook } from './schedule.controller.js';
 import { findSongLyrics } from '../services/lyricsSearch.service.js';
 import { Announcement } from '../models/Announcement.model.js';
 import { BOOK_LIST } from '../services/bible/books.js';
@@ -123,6 +124,7 @@ const songFields = (b) => ({
   lyrics: String(b.lyrics || ''),
   ...(b.category === 'hymn' || b.category === 'song' ? { category: b.category } : {}),
   ...(b.number !== undefined ? { number: String(b.number).trim().slice(0, 12) } : {}),
+  ...(b.translationLook !== undefined ? { translationLook: cleanTranslationLook(b.translationLook) } : {}),
 });
 
 export async function listSongs(req, res) {
@@ -247,6 +249,13 @@ export async function translateLyrics(req, res) {
     if (byLine.has(n) && !/^\(.*\)$/.test((lines[n + 1] ?? '').trim())) result.push(`(${byLine.get(n)})`);
   });
   res.json({ lyrics: result.join('\n'), added: result.length - lines.length });
+}
+// "Apply to every song": one translation look for all songs and hymns.
+export async function setAllTranslationLooks(req, res) {
+  const look = cleanTranslationLook(req.body?.look);
+  if (!look) throw bad('Choose a look first.');
+  const r = await Song.updateMany({}, { translationLook: look });
+  res.json({ updated: r.modifiedCount ?? 0 });
 }
 export async function deleteSong(req, res) {
   await Song.deleteOne({ _id: req.params.id });
