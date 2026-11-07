@@ -8,6 +8,7 @@ import { Avatar } from "@/components/notify/ToastHost";
 import { Field, btnGhost, inputCls } from "@/components/present/ui";
 import { PRIORITIES, STATUSES, ago, commentOnTask, fmtFull, getTask, isOverdue, listLinkableContent, statusLabel, toInputDate, updateTask, type Person, type Sprint, type Task, type TaskStatus } from "@/lib/board";
 import { PeopleChips, Skeleton } from "./bits";
+import { useCloseGuard } from "@/components/CloseGuard";
 
 const HISTORY_TEXT = (h: NonNullable<Task["history"]>[number], people: Map<string, string>) => {
   const who = h.user?.name ?? "Someone";
@@ -61,16 +62,20 @@ export function TaskDrawer({ taskId, tick, sprints, people, me, admin, canAct, o
   useEffect(() => {
     if (admin) void listLinkableContent().then(setContent);
   }, [admin]);
+  // What is typed but not yet saved or sent: an update not posted, a step not added, or a field edited and not yet saved (fields
+  // save when you leave them, so this is only true in the moment between typing and that).
+  const unsaved = () => !saving && Boolean(comment.trim() || newItem.trim() || (task && (title !== task.title || description !== task.description)));
+  const { bindPanel, request, escape, dialog, onClickCapture } = useCloseGuard(onClose, { extra: unsaved, fields: false });
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && escape();
     document.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
       document.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
+  }, [escape]);
 
   const names = new Map(people.map((p) => [p.id, p.name]));
   const mine = task ? canAct(task) : false;
@@ -95,8 +100,8 @@ export function TaskDrawer({ taskId, tick, sprints, people, me, admin, canAct, o
 
   return createPortal(
     <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-label="Task details">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <aside className="absolute inset-y-0 right-0 flex w-full max-w-xl flex-col bg-white shadow-2xl">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={request} />
+      <aside ref={bindPanel} onClickCapture={onClickCapture} className="absolute inset-y-0 right-0 flex w-full max-w-xl flex-col bg-white shadow-2xl">
         <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-3.5">
           <div className="flex items-center gap-2">
             {task && (
@@ -122,7 +127,7 @@ export function TaskDrawer({ taskId, tick, sprints, people, me, admin, canAct, o
                 <Trash2 size={17} />
               </button>
             )}
-            <button onClick={onClose} aria-label="Close" className="grid h-9 w-9 place-items-center rounded-lg text-neutral-500 hover:bg-neutral-100">
+            <button onClick={request} aria-label="Close" className="grid h-9 w-9 place-items-center rounded-lg text-neutral-500 hover:bg-neutral-100">
               <X size={18} />
             </button>
           </div>
@@ -331,6 +336,7 @@ export function TaskDrawer({ taskId, tick, sprints, people, me, admin, canAct, o
           )}
         </div>
       </aside>
+      {dialog}
     </div>,
     document.body,
   );

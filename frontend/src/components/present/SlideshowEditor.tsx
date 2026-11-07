@@ -79,7 +79,7 @@ export function SlideshowEditor({ initial, library, saving, error, onSave, onClo
   const canSave = d.name.trim() && d.quotes.length > 0;
 
   return (
-    <Modal title={d.id ? "Edit slide show" : "New slide show"} onClose={onClose} wide>
+    <Modal title={d.id ? "Edit slide show" : "New slide show"} guard onClose={onClose} wide>
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-[1fr_9rem]">
           <Field label="Name">

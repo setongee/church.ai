@@ -341,12 +341,12 @@ export default function BrandPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Labeled label="Address">
-                <textarea value={draft.address} onChange={(e) => set('address', e.target.value)} rows={2} placeholder="12 Adeola Odeku St, Victoria Island, Lagos" className={cx(field, 'resize-y')} />
+                <textarea value={draft.address} onChange={(e) => set('address', e.target.value)} rows={2} placeholder="12 Adeola Odeku St, Victoria Island, Lagos" className={cx(field)} />
               </Labeled>
             </div>
             <div className="sm:col-span-2">
               <Labeled label="Service times (shown on the closing card of every video)">
-                <textarea value={draft.serviceTimes} onChange={(e) => set('serviceTimes', e.target.value)} rows={3} placeholder={'Sundays 8am & 10:30am\nWednesdays 6pm'} className={cx(field, 'resize-y')} />
+                <textarea value={draft.serviceTimes} onChange={(e) => set('serviceTimes', e.target.value)} rows={3} placeholder={'Sundays 8am & 10:30am\nWednesdays 6pm'} className={cx(field)} />
               </Labeled>
             </div>
             <div className="sm:col-span-2">

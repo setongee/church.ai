@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookMarked, CalendarPlus, FileUp, Loader2, Music2, Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react";
-import { EFFECT_COLORS, EFFECT_SPEEDS, TEXT_EFFECTS, deleteSong, importSongs, listSongs, saveSong, songSlides, type EffectSpeed, type ScheduleItemInput, type Slide, type Song, type SongImportResult, type TextEffect } from "@/lib/present";
+import { BookMarked, CalendarPlus, FileUp, Loader2, Music2, Languages, Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react";
+import { EFFECT_COLORS, EFFECT_SPEEDS, TEXT_EFFECTS, deleteSong, importSongs, listSongs, saveSong, songSlides, titleCase, translateLyrics, type EffectSpeed, type ScheduleItemInput, type Slide, type Song, type SongImportResult, type TextEffect } from "@/lib/present";
 import { FxText } from "./FxText";
 import { SongFinder } from "./SongFinder";
 import { btnGhost, btnPrimary, Empty, Field, inputCls, Modal } from "./ui";
@@ -41,6 +41,8 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
   const [importDraft, setImportDraft] = useState({ title: "", author: "" });
   const [importFile, setImportFile] = useState<File | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  // AI "translate foreign words": the result waits here for review and only replaces the lyrics when applied.
+  const [tr, setTr] = useState<{ busy: boolean; error: string; proposal: string; added: number } | null>(null);
 
   const refresh = useCallback(() => listSongs(q, category).then(setSongs).catch((e) => (setSongs([]), setError(e.message))), [q, category]);
   useEffect(() => {
@@ -95,10 +97,21 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
     pick(next);
   }
 
+  async function translate() {
+    if (!editing || tr?.busy) return;
+    setTr({ busy: true, error: "", proposal: "", added: 0 });
+    try {
+      const r = await translateLyrics(editing.draft.lyrics);
+      setTr({ busy: false, error: "", proposal: r.lyrics, added: r.added });
+    } catch (e) {
+      setTr({ busy: false, error: e instanceof Error ? e.message : "Couldn't translate", proposal: "", added: 0 });
+    }
+  }
+
   async function save() {
     if (!editing) return;
     try {
-      const song = await saveSong({ ...editing.draft, category }, editing.id);
+      const song = await saveSong({ ...editing.draft, title: titleCase(editing.draft.title), category }, editing.id);
       setEditing(null);
       await refresh();
       setActiveId(song._id);
@@ -192,7 +205,7 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
             >
               <span className={`block truncate text-sm font-medium ${s._id === activeId ? "text-orange-700" : "text-neutral-900"}`}>
                 {hymns && s.number && <span className="mr-2 inline-block min-w-[1.75rem] text-xs font-bold tabular-nums text-orange-600">{s.number}</span>}
-                {s.title}
+                {titleCase(s.title)}
               </span>
               {s.author && <span className="block truncate text-xs text-neutral-400">{s.author}</span>}
             </button>
@@ -210,14 +223,14 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
           <>
             <div className="mb-4 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h3 className="truncate text-lg font-semibold text-neutral-900">{hymns && active.number ? `${active.number}. ` : ""}{active.title}</h3>
+                <h3 className="truncate text-lg font-semibold text-neutral-900">{hymns && active.number ? `${active.number}. ` : ""}{titleCase(active.title)}</h3>
                 <p className="text-xs text-neutral-400">{[active.author, `${slides.length} slides`].filter(Boolean).join(" · ")}</p>
               </div>
               <div className="flex gap-1.5">
-                <button onClick={() => onAdd({ type: "song", title: active.title, subtitle: active.author, slides })} className={btnGhost}>
+                <button onClick={() => onAdd({ type: "song", title: titleCase(active.title), subtitle: active.author, slides })} className={btnGhost}>
                   <CalendarPlus size={15} /> Add to schedule
                 </button>
-                <button onClick={() => setEditing({ id: active._id, draft: { title: active.title, author: active.author, lyrics: active.lyrics, number: active.number ?? "" } })} className={btnGhost}>
+                <button onClick={() => setEditing({ id: active._id, draft: { title: titleCase(active.title), author: active.author, lyrics: active.lyrics, number: active.number ?? "" } })} className={btnGhost}>
                   <Pencil size={15} /> Edit
                 </button>
                 <button onClick={() => remove(active)} aria-label={`Delete ${noun}`} className={`${btnGhost} text-red-600`}>
@@ -313,7 +326,7 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
       )}
 
       {importing && (
-        <Modal title="Import song" onClose={() => setImporting(false)}>
+        <Modal title="Import song" guard onClose={() => setImporting(false)}>
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Title">
@@ -361,7 +374,7 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
       )}
 
       {editing && (
-        <Modal title={editing.id ? `Edit ${noun}` : `New ${noun}`} onClose={() => setEditing(null)} wide>
+        <Modal title={editing.id ? `Edit ${noun}` : `New ${noun}`} guard onClose={() => (setEditing(null), setTr(null))} wide>
           <div className="space-y-4">
             <div className={`grid gap-4 ${hymns ? "sm:grid-cols-[6rem_1fr_1fr]" : "sm:grid-cols-2"}`}>
               {hymns && (
@@ -376,7 +389,36 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
                 <input value={editing.draft.author} onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, author: e.target.value } })} className={inputCls} />
               </Field>
             </div>
-            <Field label="Lyrics" hint="A blank line starts a new slide. Put [Verse 1], [Chorus], [Bridge] on its own line to label the slide.">
+            <div>
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <button type="button" onClick={translate} disabled={tr?.busy || editing.draft.lyrics.trim().length < 3} className="inline-flex items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50">
+                  {tr?.busy ? <Loader2 size={14} className="animate-spin" /> : <Languages size={14} />}
+                  {tr?.busy ? "Translating…" : "AI: translate foreign words"}
+                </button>
+                <span className="text-xs text-neutral-400">Adds the English in (brackets) under each non-English line. You review it before it’s used.</span>
+              </div>
+              {tr?.error && <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{tr.error}</p>}
+              {tr && !tr.busy && !tr.error && (
+                <div className="mb-2 space-y-2 rounded-xl border border-orange-200 bg-orange-50/50 p-3" data-no-guard>
+                  {tr.added === 0 ? (
+                    <p className="text-xs text-neutral-600">No foreign words found, so nothing was changed.</p>
+                  ) : (
+                    <>
+                      <p className="text-xs font-semibold text-neutral-700">Review: {tr.added} line{tr.added === 1 ? "" : "s"} translated. Edit anything below, then apply.</p>
+                      <textarea value={tr.proposal} onChange={(e) => setTr({ ...tr, proposal: e.target.value })} rows={10} className={`${inputCls} font-mono leading-relaxed`} />
+                    </>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <button type="button" data-no-guard onClick={() => setTr(null)} className={btnGhost}>{tr.added === 0 ? "OK" : "Discard"}</button>
+                    {tr.added > 0 && (
+                      <button type="button" data-no-guard onClick={() => { setEditing({ ...editing, draft: { ...editing.draft, lyrics: tr.proposal } }); setTr(null); }} className={btnPrimary}>
+                        Use this in the lyrics
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              <Field label="Lyrics" hint="A blank line starts a new slide. Put [Verse 1], [Chorus], [Bridge] on its own line to label the slide.">
               <textarea
                 value={editing.draft.lyrics}
                 onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, lyrics: e.target.value } })}
@@ -384,9 +426,10 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
                 placeholder={"[Verse 1]\nAmazing grace, how sweet the sound\nThat saved a wretch like me\n\n[Chorus]\n…"}
                 className={`${inputCls} font-mono leading-relaxed`}
               />
-            </Field>
+              </Field>
+            </div>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setEditing(null)} className={btnGhost}>
+              <button onClick={() => (setEditing(null), setTr(null))} className={btnGhost}>
                 Cancel
               </button>
               <button onClick={save} disabled={!editing.draft.title.trim()} className={btnPrimary}>

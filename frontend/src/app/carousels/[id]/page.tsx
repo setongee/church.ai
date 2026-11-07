@@ -453,7 +453,7 @@ export default function CarouselBuilder({ params }: { params: Promise<{ id: stri
             <label htmlFor="caption" className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Caption</label>
             <button type="button" onClick={writeCaption} disabled={busy === 'caption'} className="flex items-center gap-1.5 text-xs font-medium text-neutral-700 hover:text-neutral-900 disabled:opacity-50"><Sparkles size={13} /> Write with AI</button>
           </div>
-          <textarea id="caption" value={caption} onChange={(e) => setCaption(e.target.value)} onBlur={saveCaption} rows={6} maxLength={2200} placeholder="Say something about this post…" className="w-full resize-y rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-500" />
+          <textarea id="caption" value={caption} onChange={(e) => setCaption(e.target.value)} onBlur={saveCaption} rows={6} maxLength={2200} placeholder="Say something about this post…" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-500" />
           <p className="mt-1 text-right text-[11px] text-neutral-400">{caption.length}/2200</p>
         </div>
         <div className="space-y-4">

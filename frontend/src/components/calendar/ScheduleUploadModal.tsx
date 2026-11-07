@@ -55,7 +55,7 @@ export function ScheduleUploadModal({ upload, caption, onClose }: { upload: { _i
 
   const wasScheduled = existing?.status === "scheduled";
   return (
-    <Modal title={existing ? "On the content calendar" : "Add to the content calendar"} onClose={() => !busy && onClose()}>
+    <Modal title={existing ? "On the content calendar" : "Add to the content calendar"} guard onClose={() => !busy && onClose()}>
       {done ? (
         <div className="text-center">
           <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[rgba(22,163,74,0.14)] text-[#16a34a]">

@@ -135,6 +135,7 @@ export function ServicesList() {
       {creating && (
         <Modal
           title="Create a new service"
+          guard
           onClose={() => !loading && setCreating(false)}
         >
           <form onSubmit={handleCreate} className="space-y-4">

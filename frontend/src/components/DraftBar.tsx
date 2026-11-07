@@ -57,7 +57,7 @@ export function DraftBar() {
         </button>
       </div>
       {open && (
-        <Modal title="Send for review" onClose={() => !busy && setOpen(false)}>
+        <Modal title="Send for review" guard onClose={() => !busy && setOpen(false)}>
           <form onSubmit={send} className="space-y-3">
             <p className="text-sm text-neutral-600">An admin will look through your changes and, if they’re happy, publish them to the live screen. They stay on this device until then.</p>
             <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What is this? e.g. Sunday 12 Oct service" required className={field} />

@@ -102,6 +102,8 @@ export function SplitPanel({ deck, patch, liveSlide }: Props) {
         <div className="flex min-h-0 flex-col gap-2">
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Small title above the points (optional) — e.g. the message title" className={inputCls} />
           <textarea
+            data-autosize="off"
+            style={{ maxHeight: "none" }}
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={SAMPLE}

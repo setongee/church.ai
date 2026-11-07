@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Columns3, LayoutGrid, List, Plus, Rows3, Search, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Columns3, LayoutGrid, List, Plus, Rows3, Search, Sparkles, Tag, Zap } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { Modal, btnPrimary } from "@/components/present/ui";
 import { AiPlanModal } from "@/components/calendar/AiPlanModal";
+import { CampaignsModal } from "@/components/calendar/CampaignsModal";
 import { ItemDrawer, type DrawerTarget } from "@/components/calendar/ItemDrawer";
 import { ListView } from "@/components/calendar/ListView";
 import { MonthView } from "@/components/calendar/MonthView";
@@ -65,7 +66,8 @@ export default function CalendarPage() {
   const [owner, setOwner] = useState("");
   const [campaign, setCampaign] = useState("");
   const [drawer, setDrawer] = useState<(DrawerTarget & { key: string }) | null>(null);
-  const [planning, setPlanning] = useState(false); // the "Plan with AI" wizard
+  const [planning, setPlanning] = useState<false | { campaign: string; goal: string }>(false); // the "Plan with AI" wizard (optionally for a campaign)
+  const [managing, setManaging] = useState(false); // the campaigns manager
   const [dayList, setDayList] = useState<Date | null>(null);
   const [notice, setNotice] = useState("");
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -218,8 +220,11 @@ export default function CalendarPage() {
               </button>
             ))}
           </div>
+          <button onClick={() => setManaging(true)} className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-semibold text-neutral-700 transition hover:border-orange-300 hover:text-orange-700">
+            <Tag size={16} /> Campaigns
+          </button>
           {canWrite && (
-            <button onClick={() => setPlanning(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#171717] px-4 py-2.5 text-sm font-semibold text-[#ffffff] transition hover:bg-[#404040]">
+            <button onClick={() => setPlanning({ campaign: "", goal: "" })} className="inline-flex items-center gap-2 rounded-xl bg-[#171717] px-4 py-2.5 text-sm font-semibold text-[#ffffff] transition hover:bg-[#404040]">
               <Sparkles size={16} className="text-[#fdba74]" /> Plan with AI
             </button>
           )}
@@ -321,8 +326,18 @@ export default function CalendarPage() {
 
       <Legend campaigns={campaigns} />
 
+      {managing && (
+        <CampaignsModal
+          canWrite={canWrite}
+          onClose={() => setManaging(false)}
+          onChanged={() => (void reloadContent(), void reloadCampaigns())}
+          onPlan={(c) => (setManaging(false), setPlanning({ campaign: c.name, goal: c.goal }))}
+          onShow={(name) => (setCampaign(name), setManaging(false))}
+        />
+      )}
       {planning && (
         <AiPlanModal
+          initial={planning}
           team={team}
           isAdmin={isAdmin}
           onClose={() => setPlanning(false)}

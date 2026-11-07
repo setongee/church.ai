@@ -147,7 +147,7 @@ function EditDialog({ user, self, run, onClose }: RunProps & { user: TeamUser; s
   const [phone, setPhone] = useState(user.phone ?? "");
   const [busy, setBusy] = useState(false);
   return (
-    <Modal title="Edit member" onClose={onClose}>
+    <Modal title="Edit member" guard onClose={onClose}>
       <form
         className="space-y-3"
         onSubmit={async (e) => {

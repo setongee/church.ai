@@ -43,6 +43,7 @@ import {
   type UploadChoice,
 } from "@/lib/content";
 import { FormatIcon, StatusBadge } from "./parts";
+import { useCloseGuard } from "@/components/CloseGuard";
 
 export interface DrawerTarget {
   item?: ContentItem; // editing this one; absent = a new item
@@ -108,23 +109,18 @@ export function ItemDrawer(props: Props) {
   const upload: LinkedUpload | UploadChoice | null = item?.upload ?? pendingUpload;
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 
-  // Escape closes, and the page behind doesn't scroll.
+  // Closing with unsaved changes asks first. Escape closes, and the page behind doesn't scroll.
+  const { bindPanel, request: close, escape, dialog, onClickCapture } = useCloseGuard(onClose, { extra: dirty && editable, fields: false });
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !confirm && close();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !confirm && escape();
     document.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
       document.removeEventListener("keydown", onKey);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirm, dirty]);
-
-  function close() {
-    if (dirty && !window.confirm("Close without saving your changes?")) return;
-    onClose();
-  }
+  }, [confirm, escape]);
 
   function adopt(next: ContentItem) {
     setItem(next);
@@ -246,7 +242,7 @@ export function ItemDrawer(props: Props) {
   return createPortal(
     <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-label={item ? "Content item" : "New content"}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onMouseDown={close} />
-      <aside className="present-slide-up absolute inset-y-0 right-0 flex w-full max-w-xl flex-col bg-white shadow-2xl" style={{ animationName: "calendar-drawer-in" }}>
+      <aside ref={bindPanel} onClickCapture={onClickCapture} className="present-slide-up absolute inset-y-0 right-0 flex w-full max-w-xl flex-col bg-white shadow-2xl" style={{ animationName: "calendar-drawer-in" }}>
         <header className="flex items-center gap-3 border-b border-neutral-100 px-5 py-4">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-orange-100 text-orange-700">
             <FormatIcon format={form.format} size={18} />
@@ -405,7 +401,7 @@ export function ItemDrawer(props: Props) {
           </section>
 
           <Field label="Caption">
-            <textarea value={form.caption} onChange={(e) => set("caption", e.target.value)} disabled={!editable} rows={6} maxLength={2200} placeholder="What the post says…" className={`${inputCls} resize-y leading-relaxed`} />
+            <textarea value={form.caption} onChange={(e) => set("caption", e.target.value)} disabled={!editable} rows={6} maxLength={2200} placeholder="What the post says…" className={`${inputCls} leading-relaxed`} />
             <span className="mt-1.5 flex items-center justify-between text-xs text-neutral-400">
               <span>
                 {upload && "caption" in upload && upload.caption && upload.caption !== form.caption && editable ? (
@@ -463,7 +459,7 @@ export function ItemDrawer(props: Props) {
           </div>
 
           <Field label="Notes">
-            <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} disabled={!editable} rows={3} maxLength={4000} placeholder="Brief, references, links, who to tag…" className={`${inputCls} resize-y`} />
+            <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} disabled={!editable} rows={3} maxLength={4000} placeholder="Brief, references, links, who to tag…" className={`${inputCls}`} />
           </Field>
 
           {item && <TaskCard item={item} form={form} canLink={editable} isAdmin={isAdmin} team={team} onItem={adopt} say={say} setError={setError} />}
@@ -486,6 +482,7 @@ export function ItemDrawer(props: Props) {
           )}
         </footer>
       </aside>
+      {dialog}
 
       {confirm === "delete" && (
         <Modal title="Delete this content?" onClose={() => setConfirm(null)}>

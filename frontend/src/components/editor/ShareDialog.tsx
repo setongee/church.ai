@@ -231,7 +231,7 @@ export function ShareDialog({
                 onBlur={saveCaption}
                 rows={4}
                 placeholder="Add a caption for Instagram or WhatsApp…"
-                className="w-full resize-y rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
               />
             </div>
 

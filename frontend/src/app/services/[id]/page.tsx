@@ -349,6 +349,7 @@ export default function ServiceDetailPage({
       {starting && (
         <Modal
           title="Start a new session"
+          guard
           onClose={() => !loading && setStarting(false)}
         >
           <form onSubmit={handleStart} className="space-y-4">
@@ -404,7 +405,7 @@ export default function ServiceDetailPage({
       )}
 
       {editService && (
-        <Modal title="Edit service" onClose={() => !saving && setEditService(null)}>
+        <Modal title="Edit service" guard onClose={() => !saving && setEditService(null)}>
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -444,7 +445,7 @@ export default function ServiceDetailPage({
       )}
 
       {editSession && (
-        <Modal title="Rename session" onClose={() => !saving && setEditSession(null)}>
+        <Modal title="Rename session" guard onClose={() => !saving && setEditSession(null)}>
           <form
             onSubmit={async (e) => {
               e.preventDefault();

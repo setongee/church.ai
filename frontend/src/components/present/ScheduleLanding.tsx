@@ -127,7 +127,7 @@ export function ScheduleLanding({ onStarted }: { onStarted: (s: PresentSession) 
         </div>
       )}
       {creating && (
-        <Modal title="New schedule" onClose={() => busy !== "new" && setCreating(false)}>
+        <Modal title="New schedule" guard onClose={() => busy !== "new" && setCreating(false)}>
           <form
             onSubmit={(e) => {
               e.preventDefault();

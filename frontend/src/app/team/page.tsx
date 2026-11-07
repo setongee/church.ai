@@ -112,7 +112,7 @@ export default function TeamPage() {
       )}
 
       {adding && (
-        <Modal title="Add a team member" onClose={() => !busy && setAdding(false)}>
+        <Modal title="Add a team member" guard onClose={() => !busy && setAdding(false)}>
           <form onSubmit={add} className="space-y-3">
             <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" required className={field} />
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required className={field} />

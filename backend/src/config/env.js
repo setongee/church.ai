@@ -12,6 +12,9 @@ export const env = {
   openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
   openrouterModel: process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash-lite',
   // Longer, structured writing (message notes) can use a stronger model than the live quote/insight calls.
+  // Translating lyrics (Yoruba, Igbo, Hausa…) needs a stronger model than the cheap default. Flash is near Pro's quality
+  // on these and ~8x faster; set OPENROUTER_TRANSLATE_MODEL=google/gemini-2.5-pro for the most careful wording.
+  openrouterTranslateModel: process.env.OPENROUTER_TRANSLATE_MODEL || 'google/gemini-2.5-flash',
   openrouterNotesModel: process.env.OPENROUTER_NOTES_MODEL || process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash-lite',
   // Dedicated OpenRouter Image API model used by the editor's AI image generation.
   // Audio Lab plans cuts with the strongest model available; it reads a whole message at once.

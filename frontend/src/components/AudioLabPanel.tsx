@@ -194,7 +194,7 @@ export function AudioLabPanel({ sessionId, hasAudio = true, onOpenMerged }: { se
           rows={4}
           maxLength={500}
           placeholder="e.g. Tell me the parts where the preacher spoke on the goodness of God"
-          className="w-full resize-y rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
+          className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
         />
         <div>
           <div className="mb-1.5 flex items-center justify-between">

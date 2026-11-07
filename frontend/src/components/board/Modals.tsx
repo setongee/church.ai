@@ -32,7 +32,7 @@ export function SprintModal({ sprint, hasActive, onClose, onSave }: { sprint?: S
     }
   }
   return (
-    <Modal title={sprint ? "Edit sprint" : "New sprint"} onClose={() => !busy && onClose()}>
+    <Modal title={sprint ? "Edit sprint" : "New sprint"} guard onClose={() => !busy && onClose()}>
       <form onSubmit={submit} className="space-y-4">
         <Field label="Name">
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Sprint 12 — Easter outreach" className={inputCls} maxLength={120} />
@@ -97,7 +97,7 @@ export function TaskModal({ sprints, sprintId, status: startStatus, people, onCl
     }
   }
   return (
-    <Modal title="New task" onClose={() => !busy && onClose()} wide>
+    <Modal title="New task" guard onClose={() => !busy && onClose()} wide>
       <form onSubmit={submit} className="space-y-4">
         <Field label="Task">
           <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Edit the Sunday reel and add captions" className={inputCls} maxLength={200} />

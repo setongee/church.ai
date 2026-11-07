@@ -1,10 +1,12 @@
+import { env } from '../config/env.js';
 import { Song } from '../models/Song.model.js';
 import { extractText, parseSong } from '../services/songImport.service.js';
+import { titleCase } from '../services/titleCase.js';
 import { findSongLyrics } from '../services/lyricsSearch.service.js';
 import { Announcement } from '../models/Announcement.model.js';
 import { BOOK_LIST } from '../services/bible/books.js';
 import { detectFormat } from '../services/bible/parse.js';
-import { aiIssue, suggestScriptures } from '../services/openrouter.service.js';
+import { aiIssue, callOpenRouterJSON, suggestScriptures } from '../services/openrouter.service.js';
 import { topicPassages } from '../services/bible/topics.js';
 import { bookFromName, bookName as bookNameOf } from '../services/bible/books.js';
 import { downloadBible, getBooks, getCatalog, getChapter, getVerses, importBible, listInstalled, lookup, removeBible, search, searchAny } from '../services/bible/store.js';
@@ -116,7 +118,7 @@ export async function bibleSmart(req, res) {
 // ---- Songs ------------------------------------------------------------------------------------
 
 const songFields = (b) => ({
-  title: String(b.title || '').trim(),
+  title: titleCase(b.title),
   author: String(b.author || ''),
   lyrics: String(b.lyrics || ''),
   ...(b.category === 'hymn' || b.category === 'song' ? { category: b.category } : {}),
@@ -166,6 +168,7 @@ export async function importSongs(req, res) {
         if (t) song.title = t.slice(0, 200);
         if (a) song.author = a.slice(0, 200);
       }
+      song.title = titleCase(song.title);
       if (!song.lyrics) throw bad('No lyrics found in this file.');
       const exists = await Song.findOne({ title: new RegExp(`^${song.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
       if (exists) {
@@ -186,6 +189,64 @@ export async function updateSong(req, res) {
   const song = await Song.findByIdAndUpdate(req.params.id, f, { new: true });
   if (!song) throw bad('Song not found.', 404);
   res.json(song);
+}
+const TRANSLATE_SYSTEM = `You translate song lyrics for a Nigerian church screen. You get the start of the song for context (songStart) and a numbered list of lines to translate. Many songs mix English with Nigerian languages: Yoruba, Igbo, Hausa, Edo, Efik, Urhobo, Ibibio, Tiv and others, plus Nigerian Pidgin. Also handle other languages (Spanish, French, Latin, Swahili, Twi, Zulu...).
+First work out which language each line is in (Yoruba text is often written without tone marks, e.g. "Mo rire gba o", "Olorun mi", "ese"). Then, for each line that is not plain English, or has non-English words in it, give a natural English translation of the whole line, as a church would sing it (e.g. "Olorun mi" = "My God"). Use the song's context to resolve ambiguous words. Pidgin lines get a plain-English line too.
+Skip: lines already fully English, section labels like [Chorus], and pure vocal sounds with no meaning ("e e e", "eh", "yee", "la la la", "hallelujah"). A line that is only a refrain you have already translated should still get its translation (keep it short).
+Keep each translation to one short line. Never invent lines. Return ONLY JSON: {"translations": [{"n": number, "english": string}]} using the line numbers you were given.`;
+
+// "Translate foreign words": the AI only supplies translations by line number; this code inserts them under the original
+// lines, so the lyrics themselves can never be altered. Nothing is saved: the editor shows the result for review.
+export async function translateLyrics(req, res) {
+  const lyrics = String(req.body?.lyrics ?? '').replace(/\r\n/g, '\n');
+  if (lyrics.trim().length < 3) throw bad('Add some lyrics first.');
+  if (lyrics.length > 12000) throw bad('These lyrics are too long to translate at once. Do it in parts.');
+  const lines = lyrics.split('\n');
+  const skip = (t) => !t || /^\[[^\]]+\]$/.test(t) || /^\(.*\)$/.test(t); // bracketed lines are earlier translations (or backing vocals): leave them
+  // Each distinct line is translated once (songs repeat their choruses) and reused wherever it appears.
+  const key = (t) => t.toLowerCase().replace(/[′’‘`]/g, "'").replace(/\s+/g, ' ');
+  const first = new Map();
+  const groups = new Map();
+  lines.forEach((l, n) => {
+    const t = l.trim();
+    if (skip(t)) return;
+    const k = key(t);
+    if (!first.has(k)) first.set(k, { n, text: t });
+    groups.set(k, [...(groups.get(k) || []), n]);
+  });
+  const unique = [...first.values()];
+  if (!unique.length) throw bad('Add some lyrics first.');
+  // Batches run side by side so a long song doesn't take minutes; each batch also gets a few lines of the song for context.
+  const BATCH = 45;
+  const chunks = [];
+  for (let i = 0; i < unique.length; i += BATCH) chunks.push(unique.slice(i, i + BATCH));
+  const context = unique.slice(0, 12).map((u) => u.text);
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      callOpenRouterJSON({ system: TRANSLATE_SYSTEM, user: JSON.stringify({ songStart: context, lines: chunk }), maxTokens: 8000, temperature: 0.2, model: env.openrouterTranslateModel }).catch(() => null)
+    )
+  );
+  if (results.some((r) => !Array.isArray(r?.translations))) {
+    const why = aiIssue();
+    throw bad(why === 'credits' ? 'The AI is paused (out of credit). You can still add translations by hand.' : 'The AI couldn’t be reached just now. Try again in a moment.', 502);
+  }
+  const byLine = new Map();
+  for (const out of results) {
+    const valid = new Set(unique.map((u) => u.n));
+    for (const t of out.translations) {
+      const n = Number(t?.n);
+      const english = String(t?.english ?? '').replace(/\s+/g, ' ').trim().replace(/^\(?\s*(English:)?\s*/i, '').replace(/\)\s*$/, '').trim();
+      if (!valid.has(n) || !english) continue;
+      const k = key(lines[n].trim());
+      for (const m of groups.get(k) || []) if (!byLine.has(m)) byLine.set(m, english);
+    }
+  }
+  const result = [];
+  lines.forEach((l, n) => {
+    result.push(l);
+    if (byLine.has(n) && !/^\(.*\)$/.test((lines[n + 1] ?? '').trim())) result.push(`(${byLine.get(n)})`);
+  });
+  res.json({ lyrics: result.join('\n'), added: result.length - lines.length });
 }
 export async function deleteSong(req, res) {
   await Song.deleteOne({ _id: req.params.id });

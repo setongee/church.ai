@@ -155,7 +155,7 @@ export function AnnouncementsPanel({ onStage, onLive, onAdd, defaultTemplate }: 
       </div>
 
       {editing && (
-        <Modal title={editing.id ? "Edit announcement" : "New announcement"} onClose={() => setEditing(null)} wide>
+        <Modal title={editing.id ? "Edit announcement" : "New announcement"} guard onClose={() => setEditing(null)} wide>
           <div className="space-y-4">
             <Field label="Title">
               <input autoFocus value={editing.draft.title} onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, title: e.target.value } })} className={inputCls} />

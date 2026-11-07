@@ -98,7 +98,7 @@ export function TextPanel({ ed, design }: { ed: DesignCanvas; design: Design }) 
                 value={t.text}
                 rows={4}
                 onChange={(e) => ed.setTextContent(e.target.value)}
-                className="w-full resize-y rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-500"
+                className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-500"
               />
             </Field>
             <Field label="Letter case">
@@ -565,7 +565,7 @@ function AiPanelInner({ ed, design, session, onCreated }: AiPanelProps) {
                 onChange={(e) => setDesignText(e.target.value)}
                 rows={4}
                 placeholder="The exact words to put on the image"
-                className="w-full resize-y rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-500"
+                className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-500"
               />
               <div className="mt-1.5 flex items-center justify-between gap-2">
                 <button type="button" onClick={() => setDesignText(ed.allText())} className="text-xs font-medium text-neutral-900 hover:underline">
@@ -619,7 +619,7 @@ function AiPanelInner({ ed, design, session, onCreated }: AiPanelProps) {
           onChange={(e) => setPrompt(e.target.value)}
           rows={4}
           placeholder="e.g. Warm golden sunrise breaking over quiet hills, soft haze, hopeful mood"
-          className="w-full resize-y rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
+          className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
         />
         <div className="mt-2 flex flex-wrap gap-1.5">
           {canvasText && (

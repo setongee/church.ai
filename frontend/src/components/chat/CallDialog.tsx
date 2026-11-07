@@ -54,7 +54,7 @@ export function CallDialog({ roomName, members, meId, onStart, onSchedule, onClo
   }
 
   return (
-    <Modal title={`Group call in ${roomName}`} onClose={() => !busy && onClose()}>
+    <Modal title={`Group call in ${roomName}`} guard onClose={() => !busy && onClose()}>
       <form onSubmit={submit} className="space-y-3">
         <div role="tablist" className="inline-flex gap-1 rounded-full bg-neutral-100 p-1">
           {([["now", "Start now"], ["later", "Schedule for later"]] as const).map(([k, label]) => (

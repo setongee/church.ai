@@ -523,7 +523,7 @@ export function TemplatesPanel({ ed, design, session, brand }: { ed: DesignCanva
             {kind === 'quote' && (
               <label className="block text-xs font-medium text-neutral-600">
                 Quote
-                <textarea value={quote} onChange={(e) => setQuote(e.target.value)} rows={4} className={cx(input, 'mt-1 resize-y')} />
+                <textarea value={quote} onChange={(e) => setQuote(e.target.value)} rows={4} className={cx(input, 'mt-1')} />
               </label>
             )}
             {kind === 'give' && field('Headline', giveTitle, setGiveTitle, 'Offering')}
@@ -533,7 +533,7 @@ export function TemplatesPanel({ ed, design, session, brand }: { ed: DesignCanva
               <>
                 <label className="block text-xs font-medium text-neutral-600">
                   Points (one per line — more than 5 become a carousel)
-                  <textarea value={pointsText} onChange={(e) => setPointsText(e.target.value)} rows={6} className={cx(input, 'mt-1 resize-y')} />
+                  <textarea value={pointsText} onChange={(e) => setPointsText(e.target.value)} rows={6} className={cx(input, 'mt-1')} />
                 </label>
                 <details className="rounded-lg border border-neutral-200 p-2.5" open={!!pickedDetail || sources.length > 0}>
                   <summary className="cursor-pointer text-xs font-medium text-neutral-600">Add points from a session</summary>

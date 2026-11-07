@@ -316,6 +316,9 @@ body {
 @media (max-width: 640px) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select { font-size: 16px; }
 }
+/* Text areas size themselves to their content (see AutoGrow): no drag handle, and a long entry scrolls instead of taking the page. */
+textarea { resize: none; max-height: 70vh; overflow-y: auto; }
+
 /* Comfortable touch targets on touch screens. */
 @media (pointer: coarse) {
   button, [role="button"], summary { min-height: 36px; }

@@ -97,6 +97,33 @@ export const publishContentNow = (id: string, caption?: string) => post<ContentI
 export const linkContentTask = (id: string, taskId: string) => post<ContentItem>(`/api/content/${id}/task`, { taskId });
 export const unlinkContentTask = (id: string) => req<ContentItem>(`/api/content/${id}/task`, { method: "DELETE" });
 export const listCampaigns = () => req<string[]>("/api/content/campaigns");
+
+// Campaigns as things you manage: a name, what it is for, optional dates, and how many posts are in it.
+export interface CampaignInfo {
+  _id: string;
+  name: string;
+  goal: string;
+  startDate: string;
+  endDate: string;
+  archived: boolean;
+  posts: number;
+  published: number;
+  scheduled: number;
+  next: string | null;
+}
+export interface CampaignInput {
+  name?: string;
+  goal?: string;
+  startDate?: string;
+  endDate?: string;
+  archived?: boolean;
+}
+export const listCampaignsFull = () => req<CampaignInfo[]>("/api/content/campaigns/full");
+export const createCampaign = (input: CampaignInput) => post<CampaignInfo>("/api/content/campaigns", input);
+export const updateCampaign = (id: string, input: CampaignInput) => req<{ ok: boolean; name: string }>(`/api/content/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+// Its posts stay (without a campaign), unless `withPosts` also deletes the ones that haven't been posted.
+export const deleteCampaign = (id: string, withPosts = false) => req<{ ok: boolean; deleted?: number; kept?: number }>(`/api/content/campaigns/${id}${withPosts ? "?posts=delete" : ""}`, { method: "DELETE" });
+export const draftCampaignWithAi = (input: { idea: string; name?: string }) => post<{ name: string; goal: string; angles: string[] }>("/api/content/campaigns/ai", input);
 export const listAvailableUploads = (except?: string) => req<UploadChoice[]>(`/api/content/uploads${except ? `?except=${except}` : ""}`);
 export const contentByUpload = (uploadId: string) => req<ContentItem | null>(`/api/content/by-upload/${uploadId}`);
 

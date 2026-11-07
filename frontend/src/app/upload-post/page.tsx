@@ -420,7 +420,7 @@ function Editor({ id }: { id: string }) {
                   {caption.length} / {LIMIT}
                 </span>
               </div>
-              <textarea value={caption} onChange={(e) => setCaption(e.target.value)} onBlur={() => void updatePostUpload(id, { caption }).catch(() => {})} rows={9} className="w-full resize-y rounded-xl border border-neutral-200 bg-white px-4 py-3 text-[15px] leading-relaxed outline-none focus:border-neutral-900" />
+              <textarea value={caption} onChange={(e) => setCaption(e.target.value)} onBlur={() => void updatePostUpload(id, { caption }).catch(() => {})} rows={9} className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-[15px] leading-relaxed outline-none focus:border-neutral-900" />
               <p className="mt-2 text-xs text-neutral-500">
                 {hook.length > 125 ? <span className="text-amber-700">The first line is {hook.length} characters — Instagram cuts it at about 125, so make the hook shorter. </span> : <>First line (what shows before “more”): <b className="text-neutral-700">{hook.length}</b> characters. </>}
                 {(caption.match(/#[\p{L}\p{N}_]+/gu) ?? []).length} hashtags.

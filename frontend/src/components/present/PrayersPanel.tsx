@@ -299,7 +299,7 @@ export function PrayersPanel({ onStage, onLive, onAdd, look, onScene }: Props) {
       )}
 
       {editing && (
-        <Modal title={editing.id ? "Edit prayer" : "New prayer"} onClose={() => setEditing(null)} wide>
+        <Modal title={editing.id ? "Edit prayer" : "New prayer"} guard onClose={() => setEditing(null)} wide>
           <div className="space-y-4">
             <Field label="Title">
               <input autoFocus value={editing.draft.title} onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, title: e.target.value } })} placeholder="e.g. Opening prayer" className={inputCls} />

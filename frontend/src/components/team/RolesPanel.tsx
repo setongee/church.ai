@@ -96,7 +96,7 @@ function RoleDialog({ role, onClose, onSaved }: { role: AppRole | null; onClose:
   }
 
   return (
-    <Modal title={role ? `Edit ${role.name}` : "New role"} onClose={() => !busy && onClose()}>
+    <Modal title={role ? `Edit ${role.name}` : "New role"} guard onClose={() => !busy && onClose()}>
       <form onSubmit={save} className="space-y-3">
         <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Role name, e.g. Design Lead" required className={field} />
         <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What they do (optional)" className={field} />

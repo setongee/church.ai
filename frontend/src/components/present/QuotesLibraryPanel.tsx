@@ -354,7 +354,7 @@ export function QuotesLibraryPanel({ onStage, onLive, onAdd, style, background, 
       {showEditor && <SlideshowEditor initial={showEditor} library={quotes ?? []} saving={showSaving} error={showError} onSave={saveShow} onClose={() => setShowEditor(null)} />}
 
       {editing && (
-        <Modal title={editing.id ? "Edit quote" : "New quote"} onClose={() => setEditing(null)}>
+        <Modal title={editing.id ? "Edit quote" : "New quote"} guard onClose={() => setEditing(null)}>
           <div className="space-y-4">
             <Field label="Quote">
               <textarea autoFocus value={editing.draft.text} onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, text: e.target.value } })} rows={6} className={`${inputCls} leading-relaxed`} />

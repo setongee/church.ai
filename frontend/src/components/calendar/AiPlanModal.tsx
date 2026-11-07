@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { ArrowLeft, Check, CheckCircle2, Loader2, RefreshCw, Sparkles, Trash2, Users, X } from "lucide-react";
 import { Avatar } from "@/components/notify/ToastHost";
+import { useCloseGuard } from "@/components/CloseGuard";
 import { FORMAT_LABEL, PLATFORM_LABEL, aiPlanContent, aiPlanOne, bulkCreateContent, campaignColor, type ContentFormat, type ContentPlatform, type Person, type PlanItem, type ServiceFocus } from "@/lib/content";
 
 type Row = PlanItem & { key: string; on: boolean; owners: string[]; busy?: boolean; open?: boolean };
@@ -54,12 +55,12 @@ const field = "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.
 const chip = (on: boolean) => `rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${on ? "bg-orange-600 text-[#ffffff]" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"}`;
 const label = "mb-1.5 block text-xs font-semibold uppercase tracking-wide text-neutral-500";
 
-export function AiPlanModal({ team, isAdmin, onClose, onAdded }: { team: Person[]; isAdmin: boolean; onClose: () => void; onAdded: (firstDate: string | null) => void }) {
+export function AiPlanModal({ team, isAdmin, initial, onClose, onAdded }: { team: Person[]; isAdmin: boolean; initial?: { campaign: string; goal: string }; onClose: () => void; onAdded: (firstDate: string | null) => void }) {
   const [step, setStep] = useState<"brief" | "writing" | "review" | "done">("brief");
-  const [brief, setBrief] = useState("");
+  const [brief, setBrief] = useState(initial?.goal ?? ""); // planning for a campaign starts from what it is for
   const [excerpt, setExcerpt] = useState(""); // a service message pasted or typed in
   const [focus, setFocus] = useState<ServiceFocus[]>(["recap", "growth", "context"]);
-  const [campaign, setCampaign] = useState("");
+  const [campaign, setCampaign] = useState(initial?.campaign ?? "");
   const [start, setStart] = useState(() => ymd(nextMonday()));
   const [days, setDays] = useState(28);
   const [perWeek, setPerWeek] = useState(4);
@@ -146,9 +147,17 @@ export function AiPlanModal({ team, isAdmin, onClose, onAdded }: { team: Person[
 
   const person = (id: string) => team.find((t) => t._id === id);
 
+  // Closing asks first once there is something to lose: a brief typed in, or a plan that has been written but not yet added.
+  const { bindPanel, request, escape, dialog, onClickCapture } = useCloseGuard(onClose, { extra: () => step === "review" });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && step !== "writing" && !saving && escape();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [escape, step, saving]);
+
   return createPortal(
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && step !== "writing" && !saving && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label="Plan with AI" className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && step !== "writing" && !saving && request()}>
+      <div ref={bindPanel} onClickCapture={onClickCapture} role="dialog" aria-modal="true" aria-label="Plan with AI" className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="flex items-center gap-3 border-b border-neutral-100 px-5 py-4 sm:px-7">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-[#ffffff]">
             <Sparkles size={18} />
@@ -163,7 +172,7 @@ export function AiPlanModal({ team, isAdmin, onClose, onAdded }: { team: Person[
             ))}
           </div>
           {step !== "writing" && !saving && (
-            <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-neutral-500 hover:bg-neutral-100">
+            <button onClick={request} aria-label="Close" className="rounded-lg p-1.5 text-neutral-500 hover:bg-neutral-100">
               <X size={18} />
             </button>
           )}
@@ -515,6 +524,7 @@ export function AiPlanModal({ team, isAdmin, onClose, onAdded }: { team: Person[
           </div>
         )}
       </div>
+      {dialog}
     </div>,
     document.body,
   );

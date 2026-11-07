@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { useCloseGuard } from "@/components/CloseGuard";
 
 export const inputCls =
   "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-orange-400 focus:ring-4 focus:ring-orange-500/10";
@@ -10,23 +11,27 @@ export const btnPrimary =
 export const btnGhost =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-medium text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 disabled:opacity-50";
 
-export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+// `guard` makes closing ask first when the form inside has been changed (see CloseGuard): turn it on for anything a
+// person types into and would be sorry to lose. Leave it off for pickers, confirmations and viewers.
+export function Modal({ title, onClose, children, wide, guard }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean; guard?: boolean }) {
+  const { bindPanel, request, escape, dialog, onClickCapture } = useCloseGuard(onClose, { enabled: Boolean(guard) });
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && escape();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [escape]);
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-2xl ${wide ? "max-w-3xl" : "max-w-lg"}`}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && request()}>
+      <div ref={bindPanel} onClickCapture={onClickCapture} className={`flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-2xl ${wide ? "max-w-3xl" : "max-w-lg"}`}>
         <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
           <h2 className="text-base font-semibold text-neutral-900">{title}</h2>
-          <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-neutral-500 hover:bg-neutral-100">
+          <button onClick={request} aria-label="Close" className="rounded-lg p-1.5 text-neutral-500 hover:bg-neutral-100">
             <X size={18} />
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
       </div>
+      {dialog}
     </div>
   );
 }

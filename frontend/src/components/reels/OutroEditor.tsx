@@ -142,7 +142,7 @@ export function OutroEditor({ options, onOptions, carousel = false, templateId }
             </label>
             <label className="block text-xs font-medium text-neutral-600">
               Service times (one per line)
-              <textarea value={o.serviceTimes} onChange={(e) => set({ serviceTimes: e.target.value })} rows={3} maxLength={300} placeholder={brand?.serviceTimes || 'Sundays 8am & 10:30am'} className={`${input} resize-y`} />
+              <textarea value={o.serviceTimes} onChange={(e) => set({ serviceTimes: e.target.value })} rows={3} maxLength={300} placeholder={brand?.serviceTimes || 'Sundays 8am & 10:30am'} className={`${input}`} />
             </label>
             <label className="block text-xs font-medium text-neutral-600">
               Address
@@ -170,7 +170,7 @@ export function OutroEditor({ options, onOptions, carousel = false, templateId }
             rows={3}
             maxLength={240}
             placeholder={brand?.socials.instagram ? `Instagram  ${brand.socials.instagram}` : 'Instagram  @yourchurch\nYouTube  Your Church TV'}
-            className={`${input} resize-y`}
+            className={`${input}`}
           />
           <span className="mt-1 block font-normal text-neutral-400">Start a line with Instagram, YouTube, Facebook, TikTok or X to get its icon. Empty = the handles on your Church Profile.</span>
         </label>}

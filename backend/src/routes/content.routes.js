@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler as h } from '../utils/asyncHandler.js';
 import * as c from '../controllers/content.controller.js';
+import * as camp from '../controllers/campaign.controller.js';
 
 // The content calendar. Everyone signed in can look; planning, scheduling and posting are for admins and the
 // design / service manager / social media roles.
@@ -12,7 +13,12 @@ router.get('/', h(c.listItems));
 router.post('/ai-plan', write, h(c.aiPlan));
 router.post('/ai-plan/item', write, h(c.aiPlanItem));
 router.post('/bulk', write, h(c.bulkCreate));
-router.get('/campaigns', h(c.campaigns));
+router.get('/campaigns', h(camp.names));
+router.get('/campaigns/full', h(camp.list));
+router.post('/campaigns/ai', write, h(camp.draftWithAi));
+router.post('/campaigns', write, h(camp.create));
+router.patch('/campaigns/:id', write, h(camp.update));
+router.delete('/campaigns/:id', write, h(camp.remove));
 router.get('/uploads', write, h(c.availableUploads));
 router.get('/by-upload/:uploadId', h(c.byUpload));
 router.post('/', write, h(c.createItem));

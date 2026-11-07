@@ -476,6 +476,7 @@ export interface SongFindResponse {
   results: LyricsResult[];
 }
 export const findSongs = (q: string) => req<SongFindResponse>("/songs/find", { method: "POST", body: JSON.stringify({ q }) });
+export const translateLyrics = (lyrics: string) => req<{ lyrics: string; added: number }>("/songs/translate", { method: "POST", body: JSON.stringify({ lyrics }) });
 export const deleteSong = (id: string) => req<{ ok: boolean }>(`/songs/${id}`, { method: "DELETE" });
 
 export interface Announcement {
@@ -693,6 +694,25 @@ export const mediaSrc = (url: string) => (url.startsWith("local://") ? localUrl(
 
 // ---- helpers ----------------------------------------------------------------------------------
 
+// "amazing GRACE" -> "Amazing Grace" (small words stay lower-case; words with their own capitals are left alone).
+const SMALL_WORDS = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "the", "to", "up", "via", "with"]);
+export function titleCase(input: string): string {
+  const words = String(input ?? "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  let start = true;
+  return words
+    .map((w, i) => {
+      const letters = w.replace(/[^\p{L}]/gu, "");
+      const mixed = /\p{Ll}/u.test(letters.slice(1)) && /\p{Lu}/u.test(letters.slice(1));
+      let out: string;
+      if (mixed) out = w;
+      else if (SMALL_WORDS.has(letters.toLowerCase()) && !start && i !== words.length - 1) out = w.toLowerCase();
+      else out = w.toLowerCase().replace(/(^|[-–—/("“‘])(\p{L})/gu, (_m, pre: string, ch: string) => pre + ch.toUpperCase());
+      start = /[:–—-]$/.test(w);
+      return out;
+    })
+    .join(" ");
+}
+
 // Blank lines split slides; a "[Chorus]" / "Verse 2:" line on its own labels the slide after it.
 export function songSlides(song: Pick<Song, "title" | "lyrics">): Slide[] {
   const out: Slide[] = [];
@@ -705,7 +725,7 @@ export function songSlides(song: Pick<Song, "title" | "lyrics">): Slide[] {
       lines.shift();
     }
     const text = lines.join("\n").trim();
-    if (text) out.push({ kind: "song", title: song.title, label, text });
+    if (text) out.push({ kind: "song", title: titleCase(song.title), label, text });
   }
   return out;
 }

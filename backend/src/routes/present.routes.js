@@ -67,6 +67,7 @@ router.post('/bibles/:id/warm', h(listen.bibleWarm));
 router.get('/songs', h(c.listSongs));
 router.post('/songs', h(c.createSong));
 router.post('/songs/find', h(c.findSongs));
+router.post('/songs/translate', h(c.translateLyrics));
 router.post('/songs/import', songUpload.array('files', 50), h(c.importSongs));
 router.put('/songs/:id', h(c.updateSong));
 router.delete('/songs/:id', h(c.deleteSong));
