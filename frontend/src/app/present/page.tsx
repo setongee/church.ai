@@ -10,7 +10,7 @@ import { Spinner } from "@/components/editor/ui";
 import { ScheduleLanding } from "@/components/present/ScheduleLanding";
 import { getSocket } from "@/lib/socket";
 import { useSchedules } from "@/lib/useSchedules";
-import { endPresentSession, FRAME_PRESETS, getPresentSession, listBibles, listSceneTemplates, listWrappers, lookOfScene, wrapperPatch, type SceneTemplate, type Wrapper, playShow, sessionColor, showCommand, switchPresentSession, usePresentState, type Background, type TriggerEvent, type BibleMeta, type PresentPatch, type PresentSession, type PresentState, type PresentStyle, type TemplateScene, type ScheduleItem, type ScriptureBatch, type ScheduleItemInput, type ScheduleSettings, type Slide } from "@/lib/present";
+import { endPresentSession, FRAME_PRESETS, getPresentSession, listBibles, listSceneTemplates, listWrappers, lookOfScene, wrapperPatch, type SceneTemplate, type Wrapper, playShow, presentClose, presentVideo, sessionColor, showCommand, switchPresentSession, usePresentState, type Background, type TriggerEvent, type BibleMeta, type PresentPatch, type PresentSession, type PresentState, type PresentStyle, type TemplateScene, type ScheduleItem, type ScriptureBatch, type ScheduleItemInput, type ScheduleSettings, type Slide } from "@/lib/present";
 import { FontPicker } from "@/components/editor/FontPicker";
 import { FrameEditor } from "@/components/present/FrameEditor";
 import { Stage } from "@/components/present/Stage";
@@ -28,6 +28,8 @@ import { ChatPanel } from "@/components/chat/ChatPanel";
 import { useChat } from "@/components/chat/ChatProvider";
 import { Modal } from "@/components/present/ui";
 import { TriggerMapEditor } from "@/components/present/TriggerMap";
+import { StudioMode } from "@/components/present/StudioMode";
+import { OfflineBanner, OfflineChip } from "@/components/present/OfflineBar";
 import { FontSizeControl } from "@/components/present/FontSizeControl";
 import { BatchCard, BatchModal, batchIndex } from "@/components/present/BatchCard";
 import { SplitPanel } from "@/components/present/SplitPanel";
@@ -89,15 +91,15 @@ function PresentGate() {
 }
 
 function PresentController({ session, onEnded }: { session: PresentSession; onEnded: () => void }) {
-  const { state, patch, connected, outputId } = usePresentState();
+  const { state, patch, connected, outputId, localOutputs } = usePresentState();
   // A presenter-only user runs the service in a locked full-screen window: no menus, and the only way out is
   // End Service. (Admins and people with other roles keep the normal layout.)
-  const { user, setKiosk } = useAuth();
+  const { user, setKiosk, offlineMode } = useAuth();
   const { layout, setLayout } = usePresentLayout(); // how this person likes the screen arranged (saved on their account)
   const { unread: chatUnread, mentioned: chatMentioned } = useChat();
   // This controller only exists while a service is running, so the lock holds for exactly that long: afterwards End Service
   // returns them to the dashboard, where the rest of their pages (Image Studio, calendar, tasks, chat) are one click away.
-  const kiosk = Boolean(user && !user.isAdmin && user.roles.length > 0 && user.roles.every((r) => r === "presenter"));
+  const kiosk = Boolean(!offlineMode && user && !user.isAdmin && user.roles.length > 0 && user.roles.every((r) => r === "presenter"));
   const [fullscreen, setFullscreen] = useState(true);
   useEffect(() => {
     if (!kiosk) return;
@@ -121,9 +123,10 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
     (id: TabId) => {
       const next = new URLSearchParams(params.toString());
       next.set("tab", id);
-      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+      // The browser's own history, which Next keeps useSearchParams in step with: no server round trip, so tabs switch with no connection too.
+      window.history.replaceState(null, "", `${pathname}?${next.toString()}`);
     },
-    [router, pathname, params],
+    [pathname, params],
   );
   const [toast, setToast] = useState("");
   const [staged, setStaged] = useState<Slide | null>(null);
@@ -433,6 +436,7 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
     };
   });
   const [mapOpen, setMapOpen] = useState(false);
+  const [studio, setStudio] = useState<{ scope: string } | null>(null);
   const triggerCounts = useMemo(() => {
     const c: Record<string, number> = {};
     for (const l of schedules.active?.triggerMap?.links ?? []) c[l.from] = (c[l.from] ?? 0) + 1;
@@ -520,7 +524,7 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
   const stagedScene = staged?.kind === "text" ? staged.scene : undefined;
   const previewState: PresentState = { ...state, mode: "live", slide: staged, alert: null, ...(stagedScene ? { background: stagedScene.background ?? state.background, bgSlide: null, style: { ...state.style, ...stagedScene.style }, sectionStyles: { ...(state.sectionStyles ?? {}), prayer: lookOfScene(stagedScene) } } : {}) };
   // "Connected" means an output screen is actually open and listening (and we can reach the server).
-  const online = connected && (state.outputs ?? 0) > 0;
+  const online = (connected && (state.outputs ?? 0) > 0) || localOutputs > 0;
   const liveLabel = state.mode === "live" && state.slide ? "On screen" : state.mode === "black" ? "Black screen" : state.mode === "logo" ? "Logo screen" : "Cleared";
 
   return (
@@ -541,8 +545,9 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
           <WrapperMenu wrappers={wrappers} activeId={activeWrapperId} onPick={applyWrapper} onManage={() => setWrapperUi(true)} />
           <span title={online ? "An output screen is open and receiving" : "No output screen is open"} className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${online ? "bg-green-50 text-green-700" : "bg-neutral-100 text-neutral-500"}`}>
             <span className={`h-2 w-2 rounded-full ${online ? "bg-green-500" : "bg-neutral-400"}`} />
-            {online ? "Connected" : "Offline"}
+            {online ? (connected ? "Connected" : "Connected · local") : "Offline"}
           </span>
+          <OfflineChip />
         </div>
         <div className="flex items-center gap-2">
           <ListenButton />
@@ -559,7 +564,7 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
           )}
           {online ? (
             <button
-              onClick={() => getSocket().emit("present:close")}
+              onClick={() => presentClose()}
               title="Close the output window on the other screen"
               className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-3.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
             >
@@ -583,6 +588,8 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
           </button>
         </div>
       </div>
+
+      <OfflineBanner />
 
       {wrapperUi && <WrapperManager wrappers={wrappers} templates={templates} activeId={activeWrapperId} baseBackground={state.background} onClose={() => setWrapperUi(false)} onChanged={() => void loadWrapperData().catch(() => {})} onApply={applyWrapper} />}
 
@@ -611,8 +618,8 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
             ))}
           </div>
           <div className="min-h-0 flex-1 bg-neutral-50/40 p-3 sm:p-4">
-            {tab === "schedule" && <SchedulePanel schedule={schedules.active} onStage={stage} onLive={goLive} onTrigger={triggerTemplateFromSchedule} onMove={schedules.moveItem} onRemove={schedules.removeItem} onAddSession={schedules.addSession} onUpdateSession={schedules.updateSession} onMoveSession={schedules.moveSession} onRemoveSession={schedules.removeSession} onAssign={schedules.assignItem} onPick={(it) => fireRef.current(it._id, "stage")} triggerCounts={triggerCounts} onOpenMap={() => setMapOpen(true)} onPlayShow={playShowFromSchedule} />}
-            {tab === "scripture" && <ScripturePanel bibles={bibles} versionId={versionId} setVersionId={chooseVersion} onManage={user?.isAdmin ? () => setManaging(true) : undefined} onStage={stage} onLive={goLive} onAdd={addToSchedule} onBatch={setBatch} pointsSplitOn={Boolean(state.split?.on)} onPointsSplitOff={() => state.split && patch({ split: { ...state.split, on: false } })} liveReference={state.mode === "live" ? (state.slide?.kind === "scripture" ? state.slide.reference : state.slide?.kind === "scripture2" ? state.slide.left.reference : undefined) : undefined} />}
+            {tab === "schedule" && <SchedulePanel schedule={schedules.active} onStage={stage} onLive={goLive} onTrigger={triggerTemplateFromSchedule} onMove={schedules.moveItem} onRemove={schedules.removeItem} onAddSession={schedules.addSession} onUpdateSession={schedules.updateSession} onMoveSession={schedules.moveSession} onRemoveSession={schedules.removeSession} onAssign={schedules.assignItem} onPick={(it) => fireRef.current(it._id, "stage")} triggerCounts={triggerCounts} onOpenMap={() => setMapOpen(true)} onStudio={(scope) => setStudio({ scope })} onPlayShow={playShowFromSchedule} />}
+            {tab === "scripture" && <ScripturePanel bibles={bibles} versionId={versionId} setVersionId={chooseVersion} onManage={user?.isAdmin || offlineMode ? () => setManaging(true) : undefined} onStage={stage} onLive={goLive} onAdd={addToSchedule} onBatch={setBatch} pointsSplitOn={Boolean(state.split?.on)} onPointsSplitOff={() => state.split && patch({ split: { ...state.split, on: false } })} liveReference={state.mode === "live" ? (state.slide?.kind === "scripture" ? state.slide.reference : state.slide?.kind === "scripture2" ? state.slide.left.reference : undefined) : undefined} />}
             {tab === "split" && <SplitPanel deck={state.split} patch={patch} liveSlide={state.mode === "live" ? state.slide : null} />}
             {tab === "songs" && <SongsTab onStage={stage} onLive={goLive} onAdd={addToSchedule} liveSlide={state.mode === "live" ? state.slide : null} />}
             {tab === "announcements" && <AnnouncementsPanel onStage={stage} onLive={goLive} onAdd={addToSchedule} defaultTemplate={state.style.announcementTemplate || undefined} />}
@@ -762,16 +769,16 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
             {state.mode === "live" && state.slide?.kind === "video" && (
               <div className="mt-3 flex items-center gap-1.5 rounded-xl bg-neutral-50 p-1.5">
                 <span className="pl-2 pr-1 text-xs font-semibold text-neutral-500">Video</span>
-                <VideoBtn label="Play / pause" onClick={() => getSocket().emit("present:video", { action: "toggle" })}>
+                <VideoBtn label="Play / pause" onClick={() => presentVideo("toggle")}>
                   <Pause size={14} />
                 </VideoBtn>
-                <VideoBtn label="Restart" onClick={() => getSocket().emit("present:video", { action: "restart" })}>
+                <VideoBtn label="Restart" onClick={() => presentVideo("restart")}>
                   <RotateCcw size={14} />
                 </VideoBtn>
-                <VideoBtn label="Mute" onClick={() => getSocket().emit("present:video", { action: "mute" })}>
+                <VideoBtn label="Mute" onClick={() => presentVideo("mute")}>
                   <VolumeX size={14} />
                 </VideoBtn>
-                <VideoBtn label="Sound on" onClick={() => getSocket().emit("present:video", { action: "unmute" })}>
+                <VideoBtn label="Sound on" onClick={() => presentVideo("unmute")}>
                   <Volume2 size={14} />
                 </VideoBtn>
               </div>
@@ -808,6 +815,19 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
         </div>
       )}
 
+      {studio && schedules.active && (
+        <StudioMode
+          schedule={schedules.active}
+          scope={studio.scope}
+          liveSlide={state.mode === "live" ? state.slide : null}
+          onLive={goLive}
+          onPick={(it) => fireRef.current(it._id, "stage")}
+          onTrigger={triggerTemplateFromSchedule}
+          onPlayShow={playShowFromSchedule}
+          onScreen={(mode) => patch({ mode })}
+          onClose={() => setStudio(null)}
+        />
+      )}
       {mapOpen && schedules.active && <TriggerMapEditor schedule={schedules.active} onChange={schedules.saveTriggerMap} onClose={() => setMapOpen(false)} />}
       {pendingAdd && (
         <Modal title="Add to which session?" onClose={() => setPendingAdd(null)}>

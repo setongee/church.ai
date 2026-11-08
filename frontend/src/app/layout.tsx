@@ -7,6 +7,7 @@ import { InstallPrompt } from "@/components/InstallPrompt";
 import { PwaRegister } from "@/components/PwaRegister";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { AutoGrow } from "@/components/AutoGrow";
+import { OfflineSeed } from "@/components/OfflineSeed";
 import "./globals.css";
 
 const googleSans = Google_Sans({
@@ -64,6 +65,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <PwaRegister />
         <UpdatePrompt />
         <AutoGrow />
+        <OfflineSeed />
       </body>
     </html>
   );

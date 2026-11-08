@@ -320,7 +320,7 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
               )}
               {slideIdx < 0 && <p className="text-xs text-neutral-400">Pick a slide below to preview an effect, or set one for the whole song.</p>}
             </div>
-            <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
               {slides.map((s, i) => (
                 <button
                   key={i}
@@ -334,7 +334,7 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
                         {s.label || `Slide ${i + 1}`}
                         {s.effect && <span className="rounded-full bg-[#171717] px-1.5 py-0.5 text-[9px] text-[#ffffff]">{TEXT_EFFECTS.find((e) => e.id === s.effect!.id)?.label}</span>}
                       </span>
-                      <span className="line-clamp-5 whitespace-pre-line text-[13px] leading-snug text-neutral-800">{s.text.split("\n").map((l, k) => (isTranslationLine(l) ? <span key={k} className="block text-[11px] italic text-neutral-400">{l.trim()}</span> : <span key={k} className="block">{l}</span>))}</span>
+                      <span className="line-clamp-6 whitespace-pre-line text-base font-medium leading-snug text-neutral-800">{s.text.split("\n").map((l, k) => (isTranslationLine(l) ? <span key={k} className="block text-xs italic text-neutral-400">{l.trim()}</span> : <span key={k} className="block">{l}</span>))}</span>
                     </>
                   )}
                 </button>

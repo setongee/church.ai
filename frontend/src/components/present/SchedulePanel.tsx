@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BookOpen, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Film, FolderPlus, GalleryHorizontal, GripVertical, HandHeart, Image as ImageIcon, LayoutTemplate, Megaphone, Music2, Pencil, Quote as QuoteIcon, Trash2, Workflow, X, Zap } from "lucide-react";
-import { SESSION_COLORS, sessionColor, type Schedule, type ScheduleItem, type ScheduleItemType, type ScheduleSession, type Slide } from "@/lib/present";
+import { BookOpen, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Film, FolderPlus, GalleryHorizontal, GripVertical, HandHeart, Image as ImageIcon, LayoutTemplate, Megaphone, Music2, Pencil, Quote as QuoteIcon, Play, Trash2, Workflow, X, Zap } from "lucide-react";
+import { isTranslationLine, SESSION_COLORS, sessionColor, type Schedule, type ScheduleItem, type ScheduleItemType, type ScheduleSession, type Slide } from "@/lib/present";
 import { btnGhost, Empty } from "./ui";
 
 interface Props {
@@ -26,6 +26,8 @@ interface Props {
   // How many triggers start from each item, and the button that opens the trigger map.
   triggerCounts: Record<string, number>;
   onOpenMap: () => void;
+  // Studio mode: take the whole schedule (scope "") or one session live from a single screen.
+  onStudio: (scope: string) => void;
 }
 
 // Name, description and colour of a session. Enter in the name saves, Escape cancels.
@@ -87,7 +89,7 @@ const FILTERS: { id: ScheduleItemType | "all"; label: string }[] = [
 const preview = (s: Slide) => (s.kind === "image" ? "Image" : s.kind === "video" ? "Video" : s.kind === "welcome" ? `Welcome — ${s.main ?? ""}` : s.kind === "giving" ? `Offering & Tithe — ${s.accountNo}` : s.kind === "ministering" ? `Speaker intro — ${s.name}` : s.kind === "scripture2" ? `${s.left.reference} ${s.left.version} | ${s.right.reference} ${s.right.version}` : s.text.replace(/\s+/g, " "));
 
 // The order of service. Click an item to stage it; arrow keys step through every slide in order.
-export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onPlayShow, onTrigger, onAddSession, onUpdateSession, onMoveSession, onRemoveSession, onAssign, onPick, triggerCounts, onOpenMap }: Props) {
+export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onPlayShow, onTrigger, onAddSession, onUpdateSession, onMoveSession, onRemoveSession, onAssign, onPick, triggerCounts, onOpenMap, onStudio }: Props) {
   const [filter, setFilter] = useState<ScheduleItemType | "all">("all");
   const [pos, setPos] = useState<{ item: string; slide: number } | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
@@ -95,6 +97,7 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState("");
   const [closed, setClosed] = useState<Record<string, boolean>>({});
+  const [folded, setFolded] = useState<Record<string, boolean>>({}); // items whose slides are tucked away
   const [sdrag, setSdrag] = useState<number | null>(null); // the session being dragged (by its grip)
   const [sover, setSover] = useState<number | null>(null);
 
@@ -122,6 +125,7 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
 
   function pick(it: ScheduleItem, slide: number) {
     setPos({ item: it._id, slide });
+    setFolded((f) => (f[it._id] ? { ...f, [it._id]: false } : f)); // picking an item opens its slides again
     if (it.slides[slide]) onStage(it.slides[slide]);
     onPick(it);
   }
@@ -191,7 +195,7 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
               setOver(null);
             }}
             style={tint ? { borderLeftColor: tint, borderLeftWidth: 4 } : undefined}
-            className={`group rounded-xl border bg-white transition ${on ? "border-orange-300 ring-2 ring-orange-500/10" : "border-neutral-100 hover:border-neutral-200"} ${over === idx && drag !== null && drag !== idx ? "border-t-4 border-t-orange-400" : ""} ${drag === idx ? "opacity-40" : ""}`}
+            className={`group rounded-xl border bg-white transition ${tint ? "rounded-l-none" : ""} ${on ? "border-orange-300 ring-2 ring-orange-500/10" : "border-neutral-100 hover:border-neutral-200"} ${over === idx && drag !== null && drag !== idx ? "border-t-4 border-t-orange-400" : ""} ${drag === idx ? "opacity-40" : ""}`}
           >
             <div className="flex items-center gap-2 pr-2">
               <GripVertical size={16} className="ml-2 shrink-0 cursor-grab text-neutral-300 group-hover:text-neutral-400" />
@@ -213,6 +217,17 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
                   </span>
                 </span>
               </button>
+              {on && it.slides.length > 1 && (
+                <button
+                  onClick={() => setFolded((f) => ({ ...f, [it._id]: !f[it._id] }))}
+                  aria-label={folded[it._id] ? "Show the slides" : "Hide the slides"}
+                  aria-expanded={!folded[it._id]}
+                  title={folded[it._id] ? "Show the slides" : "Hide the slides"}
+                  className="shrink-0 rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                >
+                  {folded[it._id] ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                </button>
+              )}
               {it.type === "template" && (
                 <button onClick={() => onTrigger(it)} className="shrink-0 rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-semibold text-[#ffffff] hover:bg-orange-700">
                   Go live
@@ -242,8 +257,8 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
               </button>
             </div>
 
-            {on && it.slides.length > 1 && (
-              <div className="grid grid-cols-2 gap-2 border-t border-neutral-100 p-3 xl:grid-cols-3">
+            {on && !folded[it._id] && it.slides.length > 1 && (
+              <div className="grid grid-cols-1 gap-2 border-t border-neutral-100 p-3 sm:grid-cols-2">
                 {it.slides.map((s, i) => (
                   <button
                     key={i}
@@ -252,7 +267,13 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
                     className={`rounded-lg border p-2.5 text-left transition ${pos?.slide === i ? "border-orange-300 bg-orange-50" : "border-neutral-100 bg-neutral-50/60 hover:border-neutral-200"}`}
                   >
                     {s.kind === "song" && s.label && <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-orange-600">{s.label}</span>}
-                    <span className="line-clamp-3 text-xs leading-snug text-neutral-700">{preview(s)}</span>
+                    {s.kind === "song" ? (
+                      <span className="line-clamp-6 block whitespace-pre-line text-base font-medium leading-snug text-neutral-800">
+                        {s.text.split("\n").map((l, k) => (isTranslationLine(l) ? <span key={k} className="block text-xs italic text-neutral-400">{l.trim()}</span> : <span key={k} className="block">{l}</span>))}
+                      </span>
+                    ) : (
+                      <span className="line-clamp-3 text-sm leading-snug text-neutral-700">{preview(s)}</span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -277,6 +298,9 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => setAdding(true)} className={`${btnGhost} !py-1.5 text-xs`}>
             <FolderPlus size={14} /> New session
+          </button>
+          <button onClick={() => onStudio("")} title="Take the schedule live from one screen: items on the left, slides on the right, keyboard stepping" className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-3 py-1.5 text-xs font-semibold text-[#ffffff] hover:bg-red-700">
+            <Play size={13} /> Studio mode
           </button>
           <button onClick={onOpenMap} title="Link items so clicking or going live on one triggers a template, a background change and more" className={`${btnGhost} !py-1.5 text-xs`}>
             <Workflow size={14} /> Trigger map
@@ -336,6 +360,7 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
                   </span>
                   <button onClick={() => onMoveSession(si, si - 1)} disabled={si === 0} aria-label="Move session up" className="rounded p-1 text-neutral-400 hover:text-neutral-700 disabled:opacity-30"><ChevronUp size={14} /></button>
                   <button onClick={() => onMoveSession(si, si + 1)} disabled={si === sessions.length - 1} aria-label="Move session down" className="rounded p-1 text-neutral-400 hover:text-neutral-700 disabled:opacity-30"><ChevronDown size={14} /></button>
+                  <button onClick={() => onStudio(g.id)} aria-label="Studio mode for this session" title="Studio mode: take this session live" className="rounded p-1 text-red-500 hover:text-red-700"><Play size={14} /></button>
                   <button onClick={() => setRenaming(g.id)} aria-label="Edit session" title="Edit name, description and colour" className="rounded p-1 text-neutral-400 hover:text-neutral-700"><Pencil size={13} /></button>
                   <button
                     onClick={() => {

@@ -86,6 +86,9 @@ function load(id) {
 // Every verse of an installed Bible as { book, chapter, verse, text } in reading order (for matching a spoken quote).
 export const allVerses = (id) => load(id).flat;
 
+// A whole parsed Bible ({ book: { chapter: [[verse, text]] } }), for keeping a copy on a device.
+export const bibleData = (id) => load(path.basename(id)).chapters;
+
 // ---- install / remove -------------------------------------------------------------------------
 
 function install(meta, xml) {

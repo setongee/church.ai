@@ -4,6 +4,8 @@
 import { useSyncExternalStore } from "react";
 import { authHeaders, handleUnauthorized, type AuthUser } from "./auth";
 import { afterMutation } from "./cache";
+import { offlineModeActive } from "./offlineMode";
+import { idbGet } from "./offline/idb";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -374,7 +376,8 @@ const mediaTypeOf = (b?: Blob) => (!b ? "image" : b.type === "image/gif" ? "gif"
 async function sessionRequest<T>(method: string, init: RequestInit | undefined, raw: (path: string, init?: RequestInit) => Promise<unknown>): Promise<T | typeof PASS> {
   const local = readLocalSession();
   const scheduleId = method === "POST" || method === "PUT" ? (JSON.parse(String(init?.body ?? "{}")) as { scheduleId?: string }).scheduleId : undefined;
-  if (method === "GET") return local ? ({ session: local } as T) : PASS;
+  // Offline mode has no server session: the service is whatever was started on this device.
+  if (method === "GET") return local ? ({ session: local } as T) : offlineModeActive() ? ({ session: null } as T) : PASS;
   if (method === "DELETE") {
     writeLocalSession(null);
     return PASS;
@@ -382,6 +385,12 @@ async function sessionRequest<T>(method: string, init: RequestInit | undefined, 
   if (scheduleId && isTemp(scheduleId)) {
     const op = createdFor("schedules").find((o) => o.tempId === scheduleId);
     const session: LocalSession = { _id: local?._id ?? makeId(), schedule: scheduleId, scheduleName: String(op?.body?.name ?? "Schedule"), startedAt: local?.startedAt ?? dateNow() };
+    writeLocalSession(session);
+    return { session } as T;
+  }
+  if (offlineModeActive() && scheduleId && !isTemp(scheduleId)) {
+    const doc = await idbGet<{ name?: string }>(`schedule:${scheduleId}`);
+    const session: LocalSession = { _id: local?._id ?? makeId(), schedule: scheduleId, scheduleName: String(doc?.name ?? "Schedule"), startedAt: local?.startedAt ?? dateNow() };
     writeLocalSession(session);
     return { session } as T;
   }

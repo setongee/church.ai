@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getSocket } from "./socket";
 import { authHeaders, handleUnauthorized } from "./auth";
 import { afterMutation } from "./cache";
 import { getDeviceId } from "./deviceId";
 import { draftEnabled, draftRequest, localUrl, PASS, stageForOutput } from "./draft";
+import { importBibleLocal, isLocalBible, isNetworkError, MISS, offlineGet, offlineRemember, removeBibleLocal, withLocalBibles } from "./offline/offline";
+import { offlineModeActive } from "./offlineMode";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -272,6 +274,32 @@ const INITIAL: PresentState = {
 export type PresentPatch = Partial<Omit<PresentState, "rev" | "style" | "outputs">> & { style?: Partial<PresentState["style"]> };
 
 // Joins the shared display state. `patch` updates it for every connected output screen.
+// ---- the controller <-> output link that needs no network -------------------------------------
+// The controller and the output window are on the same machine, so when the connection drops they still talk directly
+// (a BroadcastChannel named after the output's id). The server stays the route for outputs on other machines.
+const OUT_KEY = "present-output-id";
+const STATE_KEY = "present-state";
+let localCh: BroadcastChannel | null = null;
+let localId = "";
+function openLocal(id: string | null) {
+  if (!id || typeof BroadcastChannel === "undefined") return null;
+  if (localId !== id) {
+    localCh?.close();
+    localCh = new BroadcastChannel(`fafc-present:${id}`);
+    localId = id;
+  }
+  return localCh;
+}
+// The controller's video buttons and "Go offline": the server relays them, and the local link covers an outage.
+export const presentVideo = (action: string) => {
+  getSocket().emit("present:video", { action });
+  localCh?.postMessage({ t: "video", action });
+};
+export const presentClose = () => {
+  getSocket().emit("present:close");
+  localCh?.postMessage({ t: "close" });
+};
+
 export function usePresentState(opts?: { output?: boolean }) {
   const isOutput = Boolean(opts?.output);
   const [state, setState] = useState<PresentState>(INITIAL);
@@ -279,6 +307,42 @@ export function usePresentState(opts?: { output?: boolean }) {
   // Controllers: the public id of THIS device's output screens (to put in the output window's link).
   // Outputs: the one their link names (null when opened without one).
   const [outputId, setOutputId] = useState<string | null>(null);
+  // Controllers: how many output windows on this machine are open (heard over the local link).
+  const [localOutputs, setLocalOutputs] = useState(0);
+  // Outputs: the controller was heard over the local link a moment ago.
+  const [heard, setHeard] = useState(false);
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  });
+
+  // A controller comes back to what it was showing (and the output link) even when it starts with no connection.
+  useEffect(() => {
+    if (isOutput) return;
+    try {
+      const cached = localStorage.getItem(STATE_KEY);
+      const id = localStorage.getItem(OUT_KEY);
+      /* eslint-disable react-hooks/set-state-in-effect -- localStorage is only readable after mount */
+      if (cached) setState(JSON.parse(cached) as PresentState);
+      if (id) setOutputId(id);
+      else if (offlineModeActive()) {
+        // Offline mode with no output link from the server yet: make one up, so the output window can still be opened and linked.
+        const made = `local${Math.random().toString(36).slice(2, 10)}`;
+        localStorage.setItem(OUT_KEY, made);
+        setOutputId(made);
+      }
+      /* eslint-enable react-hooks/set-state-in-effect */
+    } catch {}
+  }, [isOutput]);
+  useEffect(() => {
+    if (isOutput) return;
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(STATE_KEY, JSON.stringify(state));
+      } catch {}
+    }, 400);
+    return () => clearTimeout(t);
+  }, [state, isOutput]);
 
   useEffect(() => {
     const socket = getSocket();
@@ -289,7 +353,12 @@ export function usePresentState(opts?: { output?: boolean }) {
       // A controller drives its own device's presenter; an output screen watches the one its link names.
       socket.emit("present:join", isOutput ? { out: link } : {}, (s: PresentState | null, id?: string) => {
         if (s) setState(s);
-        if (id) setOutputId(id);
+        if (id) {
+          setOutputId(id);
+          try {
+            localStorage.setItem(OUT_KEY, id);
+          } catch {}
+        }
       });
       if (isOutput) socket.emit("present:output"); // this window is a screen, not a controller
     };
@@ -307,13 +376,70 @@ export function usePresentState(opts?: { output?: boolean }) {
     };
   }, [isOutput]);
 
+  // The local link. An output says hello every couple of seconds; the controller answers with what is on screen and counts
+  // the outputs it can hear. Whenever the controller's state changes it tells the outputs directly.
+  useEffect(() => {
+    const id = isOutput ? new URLSearchParams(window.location.search).get("o") : outputId;
+    const ch = openLocal(id);
+    if (!ch) return;
+    const me = Math.random().toString(36).slice(2);
+    const seen = new Map<string, number>();
+    let lastHeard = 0;
+    const onMsg = (e: MessageEvent) => {
+      const m = e.data as { t?: string; s?: PresentState; from?: string; action?: string } | null;
+      if (!m?.t) return;
+      if (isOutput) {
+        lastHeard = Date.now();
+        setHeard(true);
+        // The server is the source of truth while it is reachable; the local link only fills the gap.
+        if (m.t === "state" && m.s && !getSocket().connected) setState(m.s);
+        else if (m.t === "video") window.dispatchEvent(new CustomEvent("present-local-video", { detail: m.action }));
+        else if (m.t === "close") window.dispatchEvent(new Event("present-local-close"));
+      } else if (m.t === "hello" && m.from) {
+        seen.set(m.from, Date.now());
+        setLocalOutputs(seen.size);
+        ch.postMessage({ t: "state", s: stateRef.current });
+      }
+    };
+    ch.addEventListener("message", onMsg);
+    const tick = () => {
+      const now = Date.now();
+      if (isOutput) {
+        ch.postMessage({ t: "hello", from: me });
+        if (lastHeard && now - lastHeard > 7000) setHeard(false);
+      } else {
+        for (const [k, at] of seen) if (now - at > 7000) seen.delete(k);
+        setLocalOutputs(seen.size);
+      }
+    };
+    tick();
+    const timer = setInterval(tick, 2000);
+    return () => {
+      ch.removeEventListener("message", onMsg);
+      clearInterval(timer);
+    };
+  }, [isOutput, outputId]);
+  useEffect(() => {
+    if (!isOutput) openLocal(outputId)?.postMessage({ t: "state", s: state });
+  }, [state, outputId, isOutput]);
+
   const patch = useCallback((p: PresentPatch) => {
+    // Putting something else on screen ends a slide show running in this window (the server does the same for its own).
+    if (p.slide !== undefined && !runnerPatching) stopLocalShow(false);
     emitToScreen("present:patch", p);
     // Optimistic, so the live monitor reacts instantly; the server echo reconciles it.
     setState((s) => ({ ...s, ...p, style: { ...s.style, ...(p.style || {}) } }));
   }, []);
 
-  return { state, patch, connected, outputId };
+  useEffect(() => {
+    if (isOutput) return;
+    runnerPatch = patch;
+    return () => {
+      if (runnerPatch === patch) runnerPatch = null;
+    };
+  }, [patch, isOutput]);
+
+  return { state, patch, connected: connected || (isOutput && heard), outputId, localOutputs };
 }
 
 // Sends to the screen in order. A picture made on this device is first parked on the server (so a projector on another
@@ -329,12 +455,35 @@ function emitToScreen(event: string, payload: unknown) {
 // ---- API --------------------------------------------------------------------------------------
 
 // A non-admin's changes are kept on their own device and laid over what the server says (see draft.ts).
+// A read that falls back to the copy on this device when there is no connection (or the server is down).
+async function rawLocal<T>(path: string, init?: RequestInit): Promise<T> {
+  const read = (init?.method ?? "GET") === "GET";
+  try {
+    const out = await rawReq<T>(path, init);
+    if (read) offlineRemember(path, out);
+    return out;
+  } catch (e) {
+    if (read && (isNetworkError(e) || (e as { status?: number }).status! >= 500)) {
+      const local = await offlineGet<T>(path);
+      if (local !== MISS) return local;
+    }
+    throw e;
+  }
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  // A Bible added on this device is read from this device, whatever the connection (the server has never heard of it).
+  const own = /^\/bibles\/(local-[^/?]+)\/(books|chapter|find|smart)/.exec(path);
+  if (own && isLocalBible(own[1])) {
+    const local = await offlineGet<T>(path);
+    if (local !== MISS) return local;
+  }
   if (draftEnabled()) {
-    const r = await draftRequest<T>(path, init, rawReq);
+    // A Presenter's own changes are laid over the live data - which, with no connection, is the copy on this device.
+    const r = await draftRequest<T>(path, init, rawLocal);
     if (r !== PASS) return r;
   }
-  return rawReq<T>(path, init);
+  return rawLocal<T>(path, init);
 }
 
 async function rawReq<T>(path: string, init?: RequestInit): Promise<T> {
@@ -342,6 +491,8 @@ async function rawReq<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: init?.body instanceof FormData ? { ...authHeaders(), "X-Device-Id": getDeviceId(), ...(init?.headers || {}) } : { "Content-Type": "application/json", ...authHeaders(), "X-Device-Id": getDeviceId(), ...(init?.headers || {}) },
     cache: "no-store",
+    // A read that hangs (a weak connection) gives up and falls back to the copy on this device instead of freezing Present.
+    signal: init?.signal ?? ((init?.method ?? "GET") === "GET" && typeof AbortSignal !== "undefined" && "timeout" in AbortSignal ? AbortSignal.timeout(10_000) : undefined),
   });
   if (res.status === 401) handleUnauthorized();
   if (!res.ok) {
@@ -350,7 +501,7 @@ async function rawReq<T>(path: string, init?: RequestInit): Promise<T> {
     try {
       msg = JSON.parse(body)?.error;
     } catch {}
-    throw new Error(msg || `Request failed (${res.status})`);
+    throw Object.assign(new Error(msg || `Request failed (${res.status})`), { status: res.status });
   }
   if ((init?.method ?? "GET") !== "GET") afterMutation();
   return res.json() as Promise<T>;
@@ -385,18 +536,26 @@ export type FindResult =
   | { type: "passage"; passage: Passage }
   | { type: "search"; total: number; results: { book: number; chapter: number; bookName: string; verse: number; text: string }[] };
 
-export const listBibles = () => req<{ installed: BibleMeta[]; available: BibleMeta[]; books: BookInfo[] }>("/bibles");
+export const listBibles = () => req<{ installed: BibleMeta[]; available: BibleMeta[]; books: BookInfo[] }>("/bibles").then(withLocalBibles);
 export const downloadBible = (id: string) => req<BibleMeta>("/bibles/download", { method: "POST", body: JSON.stringify({ id }) });
 export const removeBible = (id: string) => {
   for (const k of [...bibleCache.keys()]) if (k.includes(`:${id}`)) bibleCache.delete(k);
+  if (isLocalBible(id)) return removeBibleLocal(id).then(() => ({ ok: true }));
   return req<{ ok: boolean }>(`/bibles/${id}`, { method: "DELETE" });
 };
-export function importBible(file: File, name: string, abbr: string) {
+export async function importBible(file: File, name: string, abbr: string): Promise<BibleMeta> {
+  // With no connection (or in offline mode) the file is read right here and kept on this device.
+  if (offlineModeActive() || (typeof navigator !== "undefined" && !navigator.onLine)) return importBibleLocal(file, name, abbr);
   const form = new FormData();
   form.set("file", file);
   form.set("name", name);
   form.set("abbr", abbr);
-  return req<BibleMeta>("/bibles/import", { method: "POST", body: form });
+  try {
+    return await req<BibleMeta>("/bibles/import", { method: "POST", body: form });
+  } catch (e) {
+    if (isNetworkError(e)) return importBibleLocal(file, name, abbr); // the server can't be reached: keep it on this device instead
+    throw e;
+  }
 }
 // Scripture text never changes, so chapters and book lists are kept in memory once fetched: going back to a chapter (or
 // switching version and back) is instant instead of another trip to the server.
@@ -642,8 +801,73 @@ export function showSlides(show: Pick<Slideshow, "quotes" | "closing" | "backgro
 }
 
 // Slide show controls (the server plays the show, so it keeps going whatever the controller tab is doing).
-export const playShow = (slides: Slide[], opts: { seconds: number; loop: boolean; name: string }) => emitToScreen("present:show", { action: "start", slides, ...opts });
-export const showCommand = (action: "pause" | "resume" | "next" | "prev" | "stop") => getSocket().emit("present:show", { action });
+// Slide shows normally run on the server (so a sleeping controller tab can't stall one). With no connection they run in this
+// window instead, stepping by the same rules, so a show still plays when the internet is down.
+let runnerPatch: ((p: PresentPatch) => void) | null = null;
+let runnerPatching = false;
+let localShow: { slides: Slide[]; index: number; seconds: number; loop: boolean; name: string; playing: boolean; timer: ReturnType<typeof setTimeout> | null } | null = null;
+function pushLocalShow(ended = false) {
+  const s = localShow;
+  if (!s || !runnerPatch) return;
+  runnerPatching = true;
+  runnerPatch({ mode: "live", slide: s.slides[s.index], show: ended ? null : { name: s.name, index: s.index, total: s.slides.length, playing: s.playing, seconds: s.seconds, loop: s.loop } });
+  runnerPatching = false;
+}
+function armLocalShow() {
+  const s = localShow;
+  if (!s) return;
+  if (s.timer) clearTimeout(s.timer);
+  s.timer = s.playing ? setTimeout(() => stepLocalShow(1, true), s.seconds * 1000) : null;
+}
+function stepLocalShow(dir: 1 | -1, auto: boolean) {
+  const s = localShow;
+  if (!s) return;
+  let next = s.index + dir;
+  if (next >= s.slides.length) {
+    if (!s.loop) {
+      if (auto) {
+        s.playing = false;
+        if (s.timer) clearTimeout(s.timer);
+        s.timer = null;
+        return pushLocalShow();
+      }
+      next = s.slides.length - 1;
+    } else next = 0;
+  } else if (next < 0) next = s.loop ? s.slides.length - 1 : 0;
+  s.index = next;
+  armLocalShow();
+  pushLocalShow();
+}
+function stopLocalShow(tell: boolean) {
+  if (!localShow) return;
+  if (localShow.timer) clearTimeout(localShow.timer);
+  if (tell) pushLocalShow(true);
+  localShow = null;
+}
+export const playShow = (slides: Slide[], opts: { seconds: number; loop: boolean; name: string }) => {
+  if (getSocket().connected) {
+    stopLocalShow(false);
+    return emitToScreen("present:show", { action: "start", slides, ...opts });
+  }
+  if (!slides.length) return;
+  stopLocalShow(false);
+  localShow = { slides, index: 0, seconds: Math.min(600, Math.max(2, Number(opts.seconds) || 8)), loop: opts.loop, name: opts.name.slice(0, 120), playing: true, timer: null };
+  armLocalShow();
+  pushLocalShow();
+};
+export const showCommand = (action: "pause" | "resume" | "next" | "prev" | "stop") => {
+  const s = localShow;
+  if (!s) return void getSocket().emit("present:show", { action });
+  if (action === "stop") return stopLocalShow(true);
+  if (action === "pause") s.playing = false;
+  else if (action === "resume") {
+    // Resuming at the end of a one-pass show starts it over.
+    if (!s.loop && s.index >= s.slides.length - 1) s.index = 0;
+    s.playing = true;
+  } else return stepLocalShow(action === "next" ? 1 : -1, false);
+  armLocalShow();
+  pushLocalShow();
+};
 
 // ---- prayers, quotes ----------------------------------------------------------------------------
 

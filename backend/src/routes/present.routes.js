@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { asyncHandler as h } from '../utils/asyncHandler.js';
 import * as c from '../controllers/present.controller.js';
 import * as sc from '../controllers/schedule.controller.js';
+import * as off from '../controllers/offline.controller.js';
 import * as pc from '../controllers/presentContent.controller.js';
 import * as app from '../controllers/appLibrary.controller.js';
 import * as ps from '../controllers/presentSession.controller.js';
@@ -52,6 +53,9 @@ async function stage(req, res) {
 
 const router = Router();
 
+router.get('/offline/manifest', h(off.manifest));
+router.get('/offline/songs', h(off.allSongs));
+router.get('/bibles/:id/export', h(off.exportBible));
 router.get('/bibles', h(c.listBibles));
 router.post('/bibles/download', h(c.downloadBibleHandler));
 router.post('/bibles/import', xmlUpload.single('file'), h(c.importBibleHandler));

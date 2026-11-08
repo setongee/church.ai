@@ -1,0 +1,49 @@
+{
+  "version": "2026-11-08T01:28:42.205Z",
+  "bibles": [
+    {
+      "id": "kjv",
+      "name": "King James Version",
+      "abbr": "KJV",
+      "lang": "en",
+      "license": "Public domain",
+      "verses": 31102
+    },
+    {
+      "id": "asv",
+      "name": "American Standard Version (1901)",
+      "abbr": "ASV",
+      "lang": "en",
+      "license": "Public domain",
+      "verses": 31102
+    },
+    {
+      "id": "web",
+      "name": "World English Bible",
+      "abbr": "WEB",
+      "lang": "en",
+      "license": "Public domain",
+      "verses": 31098
+    },
+    {
+      "id": "bbe",
+      "name": "Bible in Basic English",
+      "abbr": "BBE",
+      "lang": "en",
+      "license": "Public domain",
+      "verses": 31102
+    }
+  ],
+  "songs": 258,
+  "includesCustomSongs": false,
+  "backgrounds": [
+    "/offline-seed/backgrounds/bg-1.jpg",
+    "/offline-seed/backgrounds/bg-2.jpg",
+    "/offline-seed/backgrounds/bg-3.jpg",
+    "/offline-seed/backgrounds/bg-4.jpg",
+    "/offline-seed/backgrounds/bg-5.jpg",
+    "/offline-seed/backgrounds/bg-6.jpg",
+    "/offline-seed/backgrounds/bg-7.jpg",
+    "/offline-seed/backgrounds/bg-8.jpg"
+  ]
+}

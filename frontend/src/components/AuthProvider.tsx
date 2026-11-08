@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { canOpen, clearToken, fetchMe, getToken, logoutRequest, type AuthUser } from "@/lib/auth";
 import { getSocket } from "@/lib/socket";
@@ -9,6 +9,7 @@ import { disablePush } from "@/lib/push";
 import { resetPresentLayout } from "@/lib/presentLayouts";
 import { resetSkin } from "@/lib/skins";
 import { setDraftUser } from "@/lib/draft";
+import { OFFLINE_USER, rememberOfflineMode, setOfflineModeActive, wantsOfflineMode } from "@/lib/offlineMode";
 import { DraftBar } from "./DraftBar";
 import { StreamProvider } from "./StreamProvider";
 import { ChatProvider } from "./chat/ChatProvider";
@@ -23,19 +24,46 @@ interface AuthCtx {
   setKiosk: (on: boolean) => void;
   setUser: (u: AuthUser | null) => void;
   logout: () => Promise<void>;
+  // Offline mode: Present only, no sign-in, everything kept on this device. goOnline() leaves it and signs in the normal way.
+  offlineMode: boolean;
+  goOffline: () => void;
+  goOnline: () => void;
 }
 
-const Ctx = createContext<AuthCtx>({ user: null, kiosk: false, setKiosk: () => {}, setUser: () => {}, logout: async () => {} });
+const Ctx = createContext<AuthCtx>({ user: null, kiosk: false, setKiosk: () => {}, setUser: () => {}, logout: async () => {}, offlineMode: false, goOffline: () => {}, goOnline: () => {} });
 export const useAuth = () => useContext(Ctx);
 
 // The projector window has nobody signed in on it; it only watches the output.
 const USER_KEY = "auth-user";
+// Opening with offline mode chosen, or with no internet and nobody signed in: Present on its own, no sign-in.
+const startsOffline = () => wantsOfflineMode() || (!navigator.onLine && !getToken());
 const isPublic = (path: string) => path === "/login" || path.startsWith("/present/output");
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUserState] = useState<AuthUser | null>(null);
+  const [signedIn, setUserState] = useState<AuthUser | null>(null);
+  // Offline mode: Present only, as a local Presenter. Chosen on the login page (and remembered), or taken automatically when the
+  // app opens with no internet and nobody signed in.
+  const [offlineMode, setOfflineMode] = useState(false);
+  const user = offlineMode ? OFFLINE_USER : signedIn;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage and the connection are only readable after mount
+    if (startsOffline()) setOfflineMode(true);
+  }, []);
+  // A layout effect, so the flag is set before the pages underneath run their own effects (which read through it).
+  useLayoutEffect(() => setOfflineModeActive(offlineMode), [offlineMode]);
+  const goOffline = useCallback(() => {
+    rememberOfflineMode(true);
+    setOfflineMode(true);
+    router.replace("/present");
+  }, [router]);
+  const goOnline = useCallback(() => {
+    rememberOfflineMode(false);
+    setOfflineMode(false);
+    // Back to the normal app: signed in if this device still is, otherwise the login page.
+    window.location.assign(getToken() ? "/dashboard" : "/login");
+  }, []);
   // The signed-in person is remembered on this device, so a refresh can show the app (and its cached pages) at once
   // while the server re-confirms the session in the background.
   const setUser = useCallback((u: AuthUser | null | ((prev: AuthUser | null) => AuthUser | null)) => {
@@ -51,7 +79,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [checked, setChecked] = useState(false);
   // A non-admin's changes live on their device: start (or drop) their drafts as the person changes. The projector window
   // has nobody signed in, so it borrows the remembered person to show device-made pictures.
-  useEffect(() => {
+  // A layout effect: the device's own changes (drafts, a service started here) must be in place before the page underneath reads.
+  useLayoutEffect(() => {
     if (user) {
       setDraftUser(user);
       return;
@@ -68,7 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Work out who is signed in (once per page load), or send them to the login page.
   useEffect(() => {
-    if (pub || user) return;
+    if (pub || user || offlineMode || startsOffline()) return; // (offline mode is taken up by the effect above)
     if (!getToken()) {
       router.replace(`/login?next=${encodeURIComponent(pathname + window.location.search)}`);
       return;
@@ -86,18 +115,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then((r) => setUser(r.user))
       .catch(() => {}) // a 401 already redirected; anything else (server down) leaves the spinner
       .finally(() => setChecked(true));
-  }, [pub, user, pathname, router, setUser]);
+  }, [pub, user, offlineMode, pathname, router, setUser]);
 
   // Roles can change while someone is signed in (they get rostered, or a service passes): re-read them on
   // each page change, and send people who open a page they aren't rostered for back to their dashboard.
   useEffect(() => {
     if (!user || pub) return;
+    // Offline mode is Present only; and a device that opens with no internet lands on Present too.
+    if (offlineMode) {
+      if (!pathname.startsWith("/present")) router.replace("/present");
+      return;
+    }
     if (!canOpen(user, pathname)) router.replace("/");
-  }, [user, pub, pathname, router]);
+  }, [user, pub, offlineMode, pathname, router]);
+  useEffect(() => {
+    if (!navigator.onLine && !pub && signedIn && !pathname.startsWith("/present")) router.replace("/present");
+    // only when the app first opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Boolean(signedIn)]);
 
   // Keep-alive + sign-out detection: if this device was signed out elsewhere or by an admin, say so promptly.
   useEffect(() => {
-    if (!user) return;
+    if (!user || offlineMode) return;
     const check = () => void fetchMe().then((r) => setUser((u) => (u && JSON.stringify(u) !== JSON.stringify(r.user) ? r.user : u))).catch(() => {});
     check(); // confirm the remembered session right away
     const t = setInterval(check, 60_000);
@@ -106,20 +145,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearInterval(t);
       window.removeEventListener("focus", check);
     };
-  }, [user, setUser]);
+  }, [user, offlineMode, setUser]);
 
   // The service started or ended, or a session did: what this person may open may have changed, so look again at once.
   useEffect(() => {
-    if (!user) return;
+    if (!user || offlineMode) return;
     const socket = getSocket();
     const refresh = () => void fetchMe().then((r) => setUser((u) => (u && JSON.stringify(u) !== JSON.stringify(r.user) ? r.user : u))).catch(() => {});
     socket.on("service:changed", refresh);
     return () => void socket.off("service:changed", refresh);
-  }, [user, setUser]);
+  }, [user, offlineMode, setUser]);
 
   // Someone (this person, on another device) signed in: this device is signed out, and says why.
   useEffect(() => {
-    if (!user) return;
+    if (!user || offlineMode) return;
     const socket = getSocket();
     const onReplaced = (m: { device?: string }) => {
       clearToken();
@@ -130,7 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     socket.on("session:replaced", onReplaced);
     return () => void socket.off("session:replaced", onReplaced);
-  }, [user, setUser]);
+  }, [user, offlineMode, setUser]);
 
   const logout = useCallback(async () => {
     resetPresentLayout();
@@ -145,7 +184,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.assign("/login");
   }, []);
 
-  if (pub) return <Ctx.Provider value={{ user, kiosk, setKiosk, setUser, logout }}>{children}</Ctx.Provider>;
+  const ctx = { user, kiosk, setKiosk, setUser, logout, offlineMode, goOffline, goOnline };
+  if (pub) return <Ctx.Provider value={ctx}>{children}</Ctx.Provider>;
+  // Offline mode is just Present: no chat, notifications or live-stream plumbing, which all need the server.
+  if (offlineMode) return <Ctx.Provider value={ctx}>{pathname.startsWith("/present") ? children : null}</Ctx.Provider>;
   if (user && !canOpen(user, pathname)) return null; // redirecting
   if (!user) {
     return (
@@ -153,7 +195,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   }
   return (
-    <Ctx.Provider value={{ user, kiosk, setKiosk, setUser, logout }}>
+    <Ctx.Provider value={ctx}>
       <ToastProvider>
         <PushPrompt />
         <NotificationProvider>

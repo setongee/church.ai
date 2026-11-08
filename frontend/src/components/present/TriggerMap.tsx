@@ -244,7 +244,7 @@ export function TriggerMapEditor({ schedule, onChange, onClose }: { schedule: Sc
                   onPointerMove={moveNode}
                   onPointerUp={upNode}
                   style={{ left: n.x, top: n.y, width: n.w, height: n.h, touchAction: "none", ...(color ? { borderLeftColor: color, borderLeftWidth: 5 } : {}) }}
-                  className={`absolute flex cursor-grab select-none flex-col justify-center rounded-xl border bg-white px-3 shadow-sm active:cursor-grabbing ${selected ? "border-orange-400 ring-2 ring-orange-500/20" : "border-neutral-200"} ${targetable ? "ring-2 ring-emerald-400" : ""} ${action ? "bg-amber-50/60" : ""}`}
+                  className={`absolute flex cursor-grab select-none flex-col justify-center rounded-xl border bg-white px-3 shadow-sm active:cursor-grabbing ${color ? "rounded-l-none" : ""} ${selected ? "border-orange-400 ring-2 ring-orange-500/20" : "border-neutral-200"} ${targetable ? "ring-2 ring-emerald-400" : ""} ${action ? "bg-amber-50/60" : ""}`}
                 >
                   {kindOf(n.id) !== "session" && <span data-port="in" title="Drop a line here" className="absolute -left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full border-2 border-neutral-400 bg-white" />}
                   {kindOf(n.id) !== "action" && (

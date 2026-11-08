@@ -26,7 +26,7 @@ export default function PresentOutputPage() {
       window.close();
     };
     socket.on("present:close", onClose);
-    // Play / pause / restart / mute from the controller's video buttons.
+    // Play / pause / restart / mute from the controller's video buttons (over the server, or the local link when offline).
     const onVideo = ({ action }: { action: string }) => {
       const v = document.querySelector<HTMLVideoElement>("video[data-slide-video]");
       if (!v) return;
@@ -41,6 +41,9 @@ export default function PresentOutputPage() {
       }
     };
     socket.on("present:video", onVideo);
+    const onLocalVideo = (e: Event) => onVideo({ action: String((e as CustomEvent).detail) });
+    window.addEventListener("present-local-video", onLocalVideo);
+    window.addEventListener("present-local-close", onClose);
     // Try full screen straight away; browsers refuse unless the page was just opened by a click.
     document.documentElement.requestFullscreen?.().catch(() => {});
     const onKey = (e: KeyboardEvent) => {
@@ -53,6 +56,8 @@ export default function PresentOutputPage() {
       clearTimeout(t);
       socket.off("present:close", onClose);
       socket.off("present:video", onVideo);
+      window.removeEventListener("present-local-video", onLocalVideo);
+      window.removeEventListener("present-local-close", onClose);
       window.removeEventListener("keydown", onKey);
     };
   }, []);

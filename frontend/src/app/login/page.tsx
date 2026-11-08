@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { authStatus, login, setToken, setupAdmin } from "@/lib/auth";
 import { useAuth } from "@/components/AuthProvider";
 import { clearCache } from "@/lib/cache";
+import { isNetworkError, useOfflineStatus } from "@/lib/offline/offline";
 
 const field = "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-neutral-900";
 
@@ -19,7 +20,10 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const next = useSearchParams().get("next");
-  const { setUser } = useAuth();
+  const { setUser, goOffline } = useAuth();
+  const net = useOfflineStatus();
+  // The server can't be reached (no internet, or it is down): Present can still run on its own from this device.
+  const [unreachable, setUnreachable] = useState(false);
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -36,6 +40,7 @@ function LoginForm() {
       .then((s) => setNeedsSetup(s.needsSetup))
       .catch(() => {
         setNeedsSetup(false);
+        setUnreachable(true);
         setError("Can’t reach the server. Check that the backend is running.");
       });
   }, []);
@@ -58,7 +63,10 @@ function LoginForm() {
     } catch (err) {
       const e = err as { code?: string; device?: string; lastSeenAt?: string };
       if (e.code === "ALREADY_SIGNED_IN") setOther({ device: e.device || "another device", lastSeenAt: e.lastSeenAt });
-      else setError(err instanceof Error ? err.message : "Couldn’t sign in");
+      else {
+        if (isNetworkError(err)) setUnreachable(true);
+        setError(err instanceof Error ? err.message : "Couldn’t sign in");
+      }
       setBusy(false);
     }
   }
@@ -120,6 +128,14 @@ function LoginForm() {
           {busy ? "Please wait…" : needsSetup ? "Create admin account" : "Sign in"}
         </button>
       </form>
+      {(net.offline || unreachable) && (
+        <div className="mt-4 space-y-2 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center">
+          <p className="text-sm text-amber-900">No connection? You can still run Present from the copy saved on this device, with no sign-in.</p>
+          <button type="button" onClick={goOffline} className="w-full rounded-xl bg-neutral-900 py-2.5 text-sm font-semibold text-[#ffffff] hover:bg-neutral-700">
+            Use in offline mode
+          </button>
+        </div>
+      )}
       <p className="mt-4 text-center text-xs text-neutral-400">Signing in on a new device signs you out of the old one.</p>
     </main>
   );

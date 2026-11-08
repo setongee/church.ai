@@ -14,6 +14,7 @@ import { useCall } from "./chat/CallProvider";
 import { StreamBanner } from "./StreamProvider";
 import { NotificationBell } from "./notify/NotificationBell";
 import { canOpen } from "@/lib/auth";
+import { useOfflineStatus } from "@/lib/offline/offline";
 
 interface Item {
   href: string;
@@ -79,7 +80,8 @@ export function NavBar() {
   const pathname = usePathname();
   const [openMenu, setOpenMenu] = useState<string | null>(null); // a group's dropdown, or "user"
   const barRef = useRef<HTMLDivElement | null>(null);
-  const { user, logout, kiosk } = useAuth();
+  const { user, logout, kiosk, offlineMode, goOnline } = useAuth();
+  const net = useOfflineStatus();
   const { unread, mentioned } = useChat();
   const { calls, session } = useCall();
   // A call going on that you could join (and aren't already in): shown on every page, so it's never missed.
@@ -114,6 +116,24 @@ export function NavBar() {
       document.removeEventListener("keydown", onKey);
     };
   }, [drawer]);
+
+  // Offline mode: Present only, so the bar is just a reminder and the way back to the normal app.
+  if (offlineMode && !pathname.startsWith("/present/output")) {
+    return (
+      <header className="sticky top-0 z-40 border-b border-neutral-100 bg-white/90 pt-[env(safe-area-inset-top)] backdrop-blur">
+        <div className="mx-auto flex max-w-8xl items-center gap-3 px-4 py-2.5 sm:px-6 lg:px-20">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icons/logo.png" alt="FAFC" className="h-8 w-auto" />
+          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-900">Offline mode · Present only</span>
+          <span className="hidden min-w-0 flex-1 truncate text-xs text-neutral-500 sm:block">{net.offline ? "Everything is kept on this device until you go online." : "You’re back online. Switch when you’re ready to sign in and use the whole platform."}</span>
+          <span className="flex-1 sm:hidden" />
+          <button onClick={goOnline} className={`shrink-0 rounded-xl px-4 py-2 text-sm font-semibold ${net.offline ? "border border-neutral-200 text-neutral-700 hover:bg-neutral-50" : "bg-orange-600 text-[#ffffff] hover:bg-orange-700"}`}>
+            Go online
+          </button>
+        </div>
+      </header>
+    );
+  }
 
   // The design editor is a full-screen workspace with its own chrome.
   // The Present output is a clean projector screen - no chrome at all.

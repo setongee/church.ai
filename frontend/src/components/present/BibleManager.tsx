@@ -3,13 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Download, FileUp, Loader2, Trash2 } from "lucide-react";
 import { downloadBible, importBible, listBibles, removeBible, type BibleMeta } from "@/lib/present";
+import { useAuth } from "@/components/AuthProvider";
 import { btnGhost, btnPrimary, Field, inputCls, Modal } from "./ui";
 
 const LANGS: Record<string, string> = { en: "English", es: "Spanish", pt: "Portuguese", fr: "French", de: "German", it: "Italian", ru: "Russian", sw: "Swahili", zh: "Chinese", tl: "Tagalog" };
 
 // Download free translations on demand, remove ones you don't need, or import your own XML.
 export function BibleManager({ onClose, onChanged }: { onClose: () => void; onChanged: (installed: BibleMeta[], addedId?: string) => void }) {
-  const [tab, setTab] = useState<"get" | "installed" | "import">("get");
+  // Offline mode has no catalogue to download from: a Bible is added from an XML file and kept on this device.
+  const { offlineMode } = useAuth();
+  const [tab, setTab] = useState<"get" | "installed" | "import">(offlineMode ? "import" : "get");
   const [installed, setInstalled] = useState<BibleMeta[]>([]);
   const [available, setAvailable] = useState<BibleMeta[]>([]);
   const [busy, setBusy] = useState("");
@@ -54,9 +57,11 @@ export function BibleManager({ onClose, onChanged }: { onClose: () => void; onCh
           [
             ["get", "Download"],
             ["installed", `Installed (${installed.length})`],
-            ["import", "Import XML"],
+            ["import", offlineMode ? "Add from XML" : "Import XML"],
           ] as const
-        ).map(([k, label]) => (
+        )
+          .filter(([k]) => !(offlineMode && k === "get"))
+          .map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition ${tab === k ? "bg-white text-orange-600 shadow-sm" : "text-neutral-500 hover:text-neutral-800"}`}>
             {label}
           </button>
@@ -108,14 +113,17 @@ export function BibleManager({ onClose, onChanged }: { onClose: () => void; onCh
                 {b.name}
                 {b.verses ? <span className="ml-2 text-xs text-neutral-400">{b.verses.toLocaleString()} verses</span> : null}
               </span>
+              {b.source === "local" && <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">This device</span>}
+              {(!offlineMode || b.source === "local") && (
               <button
-                onClick={() => confirm(`Remove ${b.abbr}? You can download it again later.`) && run(b.id, () => removeBible(b.id))}
+                onClick={() => confirm(`Remove ${b.abbr}?${b.source === "local" ? " It was added on this device only, so you would need the file again to add it back." : " You can download it again later."}`) && run(b.id, () => removeBible(b.id))}
                 disabled={!!busy}
                 aria-label={`Remove ${b.abbr}`}
                 className="rounded-lg p-2 text-neutral-400 hover:bg-red-50 hover:text-red-600"
               >
                 <Trash2 size={16} />
               </button>
+              )}
             </div>
           ))}
         </div>
@@ -125,6 +133,7 @@ export function BibleManager({ onClose, onChanged }: { onClose: () => void; onCh
         <div className="space-y-4">
           <p className="text-sm text-neutral-500">
             Add any Bible in <b>Zefania</b>, <b>OSIS</b>, <b>USFX</b> or <b>OpenSong (.xmm)</b> — from the Zefania / OSIS collections, or a licensed module you own.
+            {offlineMode && " It is read on this computer and kept here, so it works with no internet."}
           </p>
           <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
             <Field label="Name">

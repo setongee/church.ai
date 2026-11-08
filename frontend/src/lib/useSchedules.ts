@@ -16,6 +16,7 @@ import {
   type ScheduleSettings,
   type ScheduleSummary,
 } from "./present";
+import { isNetworkError, saveLocalSchedule } from "./offline/offline";
 
 const SAVE_DELAY = 500;
 // Links that start or end at something that has been removed go with it.
@@ -43,6 +44,7 @@ export function useSchedules({ startId, current, apply, onActive, onGone }: Opti
   const [error, setError] = useState("");
   const activeRef = useRef<Schedule | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const unsent = useRef(false); // edits are waiting for the connection to come back
   const cb = useRef({ current, apply, onActive, onGone });
   useEffect(() => {
     cb.current = { current, apply, onActive, onGone };
@@ -56,10 +58,24 @@ export function useSchedules({ startId, current, apply, onActive, onGone }: Opti
     if (!s) return;
     try {
       await updateSchedule(s._id, { name: s.name, items: s.items, sessions: s.sessions ?? [], triggerMap: s.triggerMap, settings: s.settings });
+      unsent.current = false;
     } catch (e) {
-      fail(e);
+      // No connection: the schedule is already kept on this device; it is sent again as soon as the server can be reached.
+      if (isNetworkError(e) || (e as { status?: number }).status! >= 500) unsent.current = true;
+      else fail(e);
     }
   }, []);
+  useEffect(() => {
+    const retry = () => {
+      if (unsent.current && !timer.current) void save();
+    };
+    const t = setInterval(retry, 15_000);
+    window.addEventListener("online", retry);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("online", retry);
+    };
+  }, [save]);
   const queueSave = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(save, SAVE_DELAY);
@@ -100,6 +116,7 @@ export function useSchedules({ startId, current, apply, onActive, onGone }: Opti
       activeRef.current = next;
       setActive(next);
       setList((l) => l.map((x) => (x._id === next._id ? { ...x, name: next.name, count: next.items.length } : x)));
+      void saveLocalSchedule(next); // the copy on this device is always the latest, connected or not
       queueSave();
     },
     [queueSave],
