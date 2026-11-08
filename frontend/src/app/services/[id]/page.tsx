@@ -9,7 +9,7 @@ import {
   deleteSession,
   getService,
   importAudioSession,
-  renameSession,
+  updateSessionInfo,
   updateService,
 } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
@@ -45,7 +45,7 @@ export default function ServiceDetailPage({
   const [deleting, setDeleting] = useState(false);
   // Rename dialogs: the service (name + date, admins) or a session (name).
   const [editService, setEditService] = useState<{ name: string; date: string } | null>(null);
-  const [editSession, setEditSession] = useState<{ id: string; title: string } | null>(null);
+  const [editSession, setEditSession] = useState<{ id: string; title: string; preacher: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const canRename = Boolean(user?.isAdmin || user?.roles.includes("manager"));
@@ -283,14 +283,14 @@ export default function ServiceDetailPage({
               {canRename && (
                 <button
                   type="button"
-                  aria-label={`Rename ${s.title}`}
+                  aria-label={`Edit ${s.title}`}
                   onClick={() => {
                     setEditError("");
-                    setEditSession({ id: s._id, title: s.title });
+                    setEditSession({ id: s._id, title: s.title, preacher: s.preacher });
                   }}
                   className={`absolute top-2 z-10 rounded-md px-1.5 py-0.5 text-xs text-neutral-300 opacity-0 hover:bg-neutral-100 hover:text-orange-600 focus:opacity-100 group-hover:opacity-100 ${admin ? "right-16" : "right-2"}`}
                 >
-                  Rename
+                  Edit
                 </button>
               )}
               {admin && (
@@ -445,15 +445,15 @@ export default function ServiceDetailPage({
       )}
 
       {editSession && (
-        <Modal title="Rename session" guard onClose={() => !saving && setEditSession(null)}>
+        <Modal title="Edit session" guard onClose={() => !saving && setEditSession(null)}>
           <form
             onSubmit={async (e) => {
               e.preventDefault();
               setSaving(true);
               setEditError("");
               try {
-                const updated = await renameSession(editSession.id, editSession.title.trim());
-                setDetail((d) => (d ? { ...d, sessions: d.sessions.map((x) => (x._id === updated._id ? { ...x, title: updated.title } : x)) } : d));
+                const updated = await updateSessionInfo(editSession.id, { title: editSession.title.trim(), preacher: editSession.preacher.trim() });
+                setDetail((d) => (d ? { ...d, sessions: d.sessions.map((x) => (x._id === updated._id ? { ...x, title: updated.title, preacher: updated.preacher } : x)) } : d));
                 setEditSession(null);
               } catch (err) {
                 setEditError(err instanceof Error ? err.message : "Couldn’t save");
@@ -466,12 +466,16 @@ export default function ServiceDetailPage({
               <label className="block text-sm font-medium text-neutral-700">Session name *</label>
               <input autoFocus value={editSession.title} onChange={(e) => setEditSession({ ...editSession, title: e.target.value })} list="session-type-suggestions" className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-900 focus:outline-none" />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700">Preacher *</label>
+              <input value={editSession.preacher} onChange={(e) => setEditSession({ ...editSession, preacher: e.target.value })} placeholder="Pastor Jane Doe" className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-900 focus:outline-none" />
+            </div>
             {editError && <p className="text-sm text-red-600">{editError}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setEditSession(null)} disabled={saving} className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
                 Cancel
               </button>
-              <button type="submit" disabled={saving || !editSession.title.trim()} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-[#ffffff] hover:bg-orange-700 disabled:opacity-50">
+              <button type="submit" disabled={saving || !editSession.title.trim() || !editSession.preacher.trim()} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-[#ffffff] hover:bg-orange-700 disabled:opacity-50">
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>

@@ -673,6 +673,10 @@ export function renameSession(id: string, title: string): Promise<Session> {
   return request(`/api/sessions/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) });
 }
 
+export function updateSessionInfo(id: string, info: { title: string; preacher: string }): Promise<Session> {
+  return request(`/api/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(info) });
+}
+
 export function deleteSession(id: string): Promise<{ ok: true }> {
   return request(`/api/sessions/${id}`, { method: 'DELETE' });
 }

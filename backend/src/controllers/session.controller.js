@@ -35,9 +35,18 @@ export async function deleteSession(req, res) {
 
 // Renames a session (its title).
 export async function updateSession(req, res) {
-  const title = String(req.body?.title ?? '').trim().slice(0, 200);
-  if (!title) return res.status(400).json({ error: 'A session needs a name.' });
-  const session = await Session.findByIdAndUpdate(req.params.id, { title }, { new: true });
+  // The session's title and/or its preacher (both are required, so neither can be blanked).
+  const update = {};
+  if (req.body?.title !== undefined) {
+    update.title = String(req.body.title).trim().slice(0, 200);
+    if (!update.title) return res.status(400).json({ error: 'A session needs a name.' });
+  }
+  if (req.body?.preacher !== undefined) {
+    update.preacher = String(req.body.preacher).trim().slice(0, 120);
+    if (!update.preacher) return res.status(400).json({ error: 'A session needs a preacher.' });
+  }
+  if (!Object.keys(update).length) return res.status(400).json({ error: 'Nothing to change.' });
+  const session = await Session.findByIdAndUpdate(req.params.id, update, { new: true });
   if (!session) return res.status(404).json({ error: 'session not found' });
   res.json(session);
 }
