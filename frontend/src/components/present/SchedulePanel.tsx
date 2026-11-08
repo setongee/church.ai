@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BookOpen, CalendarDays, ChevronDown, ChevronRight, Film, FolderPlus, GalleryHorizontal, GripVertical, HandHeart, Image as ImageIcon, LayoutTemplate, Megaphone, Music2, Pencil, Quote as QuoteIcon, Trash2, X } from "lucide-react";
-import type { Schedule, ScheduleItem, ScheduleItemType, Slide } from "@/lib/present";
+import { BookOpen, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Film, FolderPlus, GalleryHorizontal, GripVertical, HandHeart, Image as ImageIcon, LayoutTemplate, Megaphone, Music2, Pencil, Quote as QuoteIcon, Trash2, Workflow, X, Zap } from "lucide-react";
+import { SESSION_COLORS, sessionColor, type Schedule, type ScheduleItem, type ScheduleItemType, type ScheduleSession, type Slide } from "@/lib/present";
 import { btnGhost, Empty } from "./ui";
 
 interface Props {
@@ -15,31 +15,56 @@ interface Props {
   onPlayShow: (item: ScheduleItem) => void;
   // Trigger a template item: applies its scene (or shows the template).
   onTrigger: (item: ScheduleItem) => void;
-  // Sessions: named groups inside the schedule.
-  onAddSession: (name: string) => void;
-  onRenameSession: (id: string, name: string) => void;
+  // Sessions: named, colour-coded groups inside the schedule, each with a description.
+  onAddSession: (input: { name: string; description?: string; color?: string }) => void;
+  onUpdateSession: (id: string, patch: Partial<Pick<ScheduleSession, "name" | "description" | "color">>) => void;
+  onMoveSession: (from: number, to: number) => void;
   onRemoveSession: (id: string, withItems: boolean) => void;
   onAssign: (itemId: string, session: string) => void;
+  // Clicking an item picks it: its "when clicked" triggers run.
+  onPick: (item: ScheduleItem) => void;
+  // How many triggers start from each item, and the button that opens the trigger map.
+  triggerCounts: Record<string, number>;
+  onOpenMap: () => void;
 }
 
-// A one-line name box: Enter saves, Escape cancels.
-function NameInput({ initial = "", placeholder, onSave, onCancel }: { initial?: string; placeholder: string; onSave: (name: string) => void; onCancel: () => void }) {
-  const [v, setV] = useState(initial);
+// Name, description and colour of a session. Enter in the name saves, Escape cancels.
+function SessionForm({ initial, defaultColor, onSave, onCancel }: { initial?: ScheduleSession; defaultColor: string; onSave: (v: { name: string; description: string; color: string }) => void; onCancel: () => void }) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [color, setColor] = useState(initial?.color || defaultColor);
+  const save = () => name.trim() && onSave({ name: name.trim(), description: description.trim(), color });
   return (
-    <input
-      autoFocus
-      value={v}
-      maxLength={60}
-      placeholder={placeholder}
-      onChange={(e) => setV(e.target.value)}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === "Enter" && v.trim()) onSave(v.trim());
-        if (e.key === "Escape") onCancel();
-      }}
-      onBlur={() => (v.trim() && v.trim() !== initial ? onSave(v.trim()) : onCancel())}
-      className="min-w-0 flex-1 rounded-lg border border-orange-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-orange-500/20"
-    />
+    <div className="space-y-2.5 rounded-xl border border-orange-200 bg-white p-3" onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), onCancel())}>
+      <input
+        autoFocus
+        value={name}
+        maxLength={60}
+        placeholder="Session name, e.g. Praise"
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), save())}
+        className="w-full rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
+      />
+      <textarea
+        value={description}
+        maxLength={300}
+        rows={2}
+        placeholder="What this session is for (optional), e.g. All the praise songs before the word"
+        onChange={(e) => setDescription(e.target.value)}
+        className="w-full rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
+      />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="mr-1 text-xs font-semibold text-neutral-500">Colour</span>
+        {SESSION_COLORS.map((c) => (
+          <button key={c} type="button" onClick={() => setColor(c)} aria-label={`Colour ${c}`} aria-pressed={color === c} className={`h-6 w-6 rounded-full border-2 ${color === c ? "scale-110 border-neutral-900" : "border-white ring-1 ring-neutral-300"}`} style={{ background: c }} />
+        ))}
+        <input type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label="Custom colour" className="h-7 w-9 cursor-pointer rounded border border-neutral-200 bg-white p-0.5" />
+      </div>
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCancel} className={`${btnGhost} !py-1 text-xs`}>Cancel</button>
+        <button type="button" onClick={save} disabled={!name.trim()} className="rounded-lg bg-orange-600 px-3 py-1 text-xs font-semibold text-[#ffffff] hover:bg-orange-700 disabled:opacity-50">Save session</button>
+      </div>
+    </div>
   );
 }
 
@@ -62,7 +87,7 @@ const FILTERS: { id: ScheduleItemType | "all"; label: string }[] = [
 const preview = (s: Slide) => (s.kind === "image" ? "Image" : s.kind === "video" ? "Video" : s.kind === "welcome" ? `Welcome — ${s.main ?? ""}` : s.kind === "giving" ? `Offering & Tithe — ${s.accountNo}` : s.kind === "ministering" ? `Speaker intro — ${s.name}` : s.kind === "scripture2" ? `${s.left.reference} ${s.left.version} | ${s.right.reference} ${s.right.version}` : s.text.replace(/\s+/g, " "));
 
 // The order of service. Click an item to stage it; arrow keys step through every slide in order.
-export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onPlayShow, onTrigger, onAddSession, onRenameSession, onRemoveSession, onAssign }: Props) {
+export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onPlayShow, onTrigger, onAddSession, onUpdateSession, onMoveSession, onRemoveSession, onAssign, onPick, triggerCounts, onOpenMap }: Props) {
   const [filter, setFilter] = useState<ScheduleItemType | "all">("all");
   const [pos, setPos] = useState<{ item: string; slide: number } | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
@@ -70,6 +95,8 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState("");
   const [closed, setClosed] = useState<Record<string, boolean>>({});
+  const [sdrag, setSdrag] = useState<number | null>(null); // the session being dragged (by its grip)
+  const [sover, setSover] = useState<number | null>(null);
 
   const items = useMemo(() => schedule?.items ?? [], [schedule]);
   // Only the kinds that are actually in this schedule get a chip (with how many).
@@ -96,6 +123,7 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
   function pick(it: ScheduleItem, slide: number) {
     setPos({ item: it._id, slide });
     if (it.slides[slide]) onStage(it.slides[slide]);
+    onPick(it);
   }
 
   function step(dir: 1 | -1) {
@@ -123,7 +151,7 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
         Use <b>Add to schedule</b> in Scripture, Songs, Announcements or Images to build the order of service.
         <span className="mt-3 block">
           {adding ? (
-            <span className="flex gap-2"><NameInput placeholder="Session name, e.g. Praise" onSave={(n) => (onAddSession(n), setAdding(false))} onCancel={() => setAdding(false)} /></span>
+            <span className="block text-left"><SessionForm defaultColor={SESSION_COLORS[0]} onSave={(v) => (onAddSession(v), setAdding(false))} onCancel={() => setAdding(false)} /></span>
           ) : (
             <button onClick={() => setAdding(true)} className={btnGhost}>
               <FolderPlus size={15} /> Start with a session (e.g. Praise)
@@ -138,6 +166,8 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
         const idx = items.indexOf(it);
         const Icon = ICONS[it.type];
         const on = pos?.item === it._id;
+        const tint = sessionColor(sessions, it.session);
+        const zaps = triggerCounts[it._id] ?? 0;
         return (
           <div
             key={it._id}
@@ -160,6 +190,7 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
               setDrag(null);
               setOver(null);
             }}
+            style={tint ? { borderLeftColor: tint, borderLeftWidth: 4 } : undefined}
             className={`group rounded-xl border bg-white transition ${on ? "border-orange-300 ring-2 ring-orange-500/10" : "border-neutral-100 hover:border-neutral-200"} ${over === idx && drag !== null && drag !== idx ? "border-t-4 border-t-orange-400" : ""} ${drag === idx ? "opacity-40" : ""}`}
           >
             <div className="flex items-center gap-2 pr-2">
@@ -169,7 +200,14 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
                   <Icon size={16} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-neutral-900">{it.title || "Untitled"}</span>
+                  <span className="flex items-center gap-1.5 truncate text-sm font-semibold text-neutral-900">
+                    <span className="truncate">{it.title || "Untitled"}</span>
+                    {zaps > 0 && (
+                      <span title={`${zaps} trigger${zaps === 1 ? "" : "s"} start from this item`} className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                        <Zap size={10} /> {zaps}
+                      </span>
+                    )}
+                  </span>
                   <span className="block truncate text-xs text-neutral-400">
                     {[it.subtitle, it.scene && "Scene", it.slides.length > 1 && `${it.slides.length} slides`].filter(Boolean).join(" · ")}
                   </span>
@@ -233,44 +271,83 @@ export function SchedulePanel({ schedule, onStage, onLive, onMove, onRemove, onP
           </button>
         ))}
       </div>
-      <div className="flex items-center gap-2">
-        {adding ? (
-          <NameInput placeholder="Session name, e.g. Praise" onSave={(n) => (onAddSession(n), setAdding(false))} onCancel={() => setAdding(false)} />
-        ) : (
+      {adding ? (
+        <SessionForm defaultColor={SESSION_COLORS[sessions.length % SESSION_COLORS.length]} onSave={(v) => (onAddSession(v), setAdding(false))} onCancel={() => setAdding(false)} />
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => setAdding(true)} className={`${btnGhost} !py-1.5 text-xs`}>
             <FolderPlus size={14} /> New session
           </button>
-        )}
-      </div>
+          <button onClick={onOpenMap} title="Link items so clicking or going live on one triggers a template, a background change and more" className={`${btnGhost} !py-1.5 text-xs`}>
+            <Workflow size={14} /> Trigger map
+            {Object.values(triggerCounts).reduce((a, b) => a + b, 0) > 0 && <span className="rounded-full bg-amber-100 px-1.5 text-[10px] font-bold text-amber-800">{Object.values(triggerCounts).reduce((a, b) => a + b, 0)}</span>}
+          </button>
+        </div>
+      )}
       {groups.map((g) => {
         if (!g.id && !g.items.length && sessions.length) return null; // an empty "No session" group isn't worth showing
         if (!g.id && !sessions.length) return g.items.map(row);
         if (g.id && !g.items.length && active !== "all") return null;
         const open = !g.id || !closed[g.id];
+        const si = sessions.findIndex((x) => x._id === g.id);
+        const session = sessions[si];
+        const color = g.id ? sessionColor(sessions, g.id) : "";
+        if (g.id && renaming === g.id && session) {
+          return <SessionForm key={g.id} initial={session} defaultColor={color} onSave={(v) => (onUpdateSession(g.id, v), setRenaming(""))} onCancel={() => setRenaming("")} />;
+        }
         return (
-          <section key={g.id || "none"} className={`space-y-2 ${g.id ? "rounded-2xl border border-neutral-200 bg-neutral-50/60 p-2" : ""}`}>
+          <section
+            key={g.id || "none"}
+            onDragOver={(e) => {
+              if (sdrag === null || !g.id) return;
+              e.preventDefault();
+              setSover(si);
+            }}
+            onDrop={() => {
+              if (sdrag !== null && si >= 0) onMoveSession(sdrag, si);
+              setSdrag(null);
+              setSover(null);
+            }}
+            style={g.id ? { borderColor: `${color}66`, background: `${color}0f` } : undefined}
+            className={`space-y-2 ${g.id ? "rounded-2xl border p-2" : ""} ${sover === si && sdrag !== null && sdrag !== si ? "ring-2 ring-orange-400" : ""} ${sdrag === si && sdrag !== null ? "opacity-50" : ""}`}
+          >
             {g.id ? (
-              <div className="flex items-center gap-1.5 px-1">
-                <button onClick={() => setClosed((c) => ({ ...c, [g.id]: open }))} aria-label={open ? "Collapse session" : "Expand session"} className="rounded p-1 text-neutral-400 hover:text-neutral-700">
-                  {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-                </button>
-                {renaming === g.id ? (
-                  <NameInput initial={g.name} placeholder="Session name" onSave={(n) => (onRenameSession(g.id, n), setRenaming(""))} onCancel={() => setRenaming("")} />
-                ) : (
+              <div className="px-1">
+                <div className="flex items-center gap-1.5">
+                  <span
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", g.name);
+                      setSdrag(si);
+                    }}
+                    onDragEnd={() => (setSdrag(null), setSover(null))}
+                    title="Drag to reorder sessions"
+                    className="cursor-grab rounded p-0.5 text-neutral-400 hover:text-neutral-700"
+                  >
+                    <GripVertical size={15} />
+                  </span>
+                  <button onClick={() => setClosed((c) => ({ ...c, [g.id]: open }))} aria-label={open ? "Collapse session" : "Expand session"} className="rounded p-1 text-neutral-400 hover:text-neutral-700">
+                    {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                  </button>
+                  <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: color }} />
                   <span className="min-w-0 flex-1 truncate text-sm font-bold text-neutral-800">
                     {g.name} <span className="text-xs font-medium text-neutral-400">{g.items.length}</span>
                   </span>
-                )}
-                <button onClick={() => setRenaming(g.id)} aria-label="Rename session" className="rounded p-1 text-neutral-400 hover:text-neutral-700"><Pencil size={13} /></button>
-                <button
-                  onClick={() => {
-                    if (g.items.length === 0 || confirm(`Delete the session “${g.name}”? Its ${g.items.length} item${g.items.length === 1 ? "" : "s"} stay in the schedule, outside any session.\n\nPress Cancel to keep it.`)) onRemoveSession(g.id, false);
-                  }}
-                  aria-label="Delete session"
-                  className="rounded p-1 text-neutral-400 hover:text-red-600"
-                >
-                  <Trash2 size={13} />
-                </button>
+                  <button onClick={() => onMoveSession(si, si - 1)} disabled={si === 0} aria-label="Move session up" className="rounded p-1 text-neutral-400 hover:text-neutral-700 disabled:opacity-30"><ChevronUp size={14} /></button>
+                  <button onClick={() => onMoveSession(si, si + 1)} disabled={si === sessions.length - 1} aria-label="Move session down" className="rounded p-1 text-neutral-400 hover:text-neutral-700 disabled:opacity-30"><ChevronDown size={14} /></button>
+                  <button onClick={() => setRenaming(g.id)} aria-label="Edit session" title="Edit name, description and colour" className="rounded p-1 text-neutral-400 hover:text-neutral-700"><Pencil size={13} /></button>
+                  <button
+                    onClick={() => {
+                      if (g.items.length === 0 || confirm(`Delete the session “${g.name}”? Its ${g.items.length} item${g.items.length === 1 ? "" : "s"} stay in the schedule, outside any session.\n\nPress Cancel to keep it.`)) onRemoveSession(g.id, false);
+                    }}
+                    aria-label="Delete session"
+                    className="rounded p-1 text-neutral-400 hover:text-red-600"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                {session?.description && <p className="ml-9 mt-0.5 line-clamp-2 text-xs text-neutral-500">{session.description}</p>}
               </div>
             ) : (
               <p className="px-1 text-[11px] font-bold uppercase tracking-widest text-neutral-400">No session</p>

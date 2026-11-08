@@ -132,6 +132,41 @@ export function cleanSlide(s) {
 }
 
 const OID = /^[0-9a-f]{24}$/i;
+
+// The trigger map: "when this item is clicked / goes live, do that". Sources are items or whole sessions; targets are other items
+// (a template item applies its scene, anything else goes live) or action nodes (a background change, or a black/clear/logo
+// screen). Anything pointing at something that no longer exists is dropped.
+export function cleanTriggerMap(m, itemIds, sessionIds) {
+  const out = { nodes: [], links: [], pos: {} };
+  if (!m || typeof m !== 'object') return out;
+  const num = (v, lo, hi) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Math.round(Number(v)))) : 0);
+  const nodeIds = new Set();
+  for (const n of (Array.isArray(m.nodes) ? m.nodes : []).slice(0, 60)) {
+    if (!n || !OID.test(n.id) || nodeIds.has(n.id)) continue;
+    if (n.kind === 'background') {
+      const background = cleanBackground(n.background);
+      if (!background) continue;
+      out.nodes.push({ id: n.id, kind: 'background', background });
+    } else if (n.kind === 'screen' && ['black', 'clear', 'logo'].includes(n.mode)) out.nodes.push({ id: n.id, kind: 'screen', mode: n.mode });
+    else continue;
+    nodeIds.add(n.id);
+  }
+  const sources = new Set([...itemIds, ...sessionIds]);
+  const targets = new Set([...itemIds, ...nodeIds]);
+  const seen = new Set();
+  for (const l of (Array.isArray(m.links) ? m.links : []).slice(0, 200)) {
+    if (!l || !sources.has(l.from) || !targets.has(l.to) || l.from === l.to) continue;
+    const on = l.on === 'stage' ? 'stage' : 'live';
+    const key = `${l.from}>${l.to}>${on}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.links.push({ id: OID.test(l.id) ? l.id : new mongoose.Types.ObjectId().toString(), from: l.from, to: l.to, on, delay: num(l.delay, 0, 120) });
+  }
+  const known = new Set([...itemIds, ...sessionIds, ...nodeIds]);
+  for (const [k, v] of Object.entries(m.pos && typeof m.pos === 'object' ? m.pos : {})) if (known.has(k) && v) out.pos[k] = { x: num(v.x, -500, 6000), y: num(v.y, -500, 6000) };
+  return out;
+}
+
 function cleanSessions(list) {
   if (!Array.isArray(list)) return [];
   const seen = new Set();
@@ -141,7 +176,7 @@ function cleanSessions(list) {
     if (!name) continue;
     const id = x?._id && OID.test(x._id) && !seen.has(x._id) ? x._id : new mongoose.Types.ObjectId().toString();
     seen.add(id);
-    out.push({ _id: id, name });
+    out.push({ _id: id, name, description: str(x?.description, 300).trim(), color: /^#[0-9a-f]{6}$/i.test(x?.color) ? x.color : '' });
   }
   return out;
 }
@@ -259,7 +294,10 @@ export async function createSchedule(req, res) {
   const name = str(req.body?.name, 80).trim();
   if (!name) throw bad('Give the schedule a name.');
   const sessions = cleanSessions(req.body?.sessions);
-  res.json(await Schedule.create({ name, sessions, items: cleanItems(req.body?.items, new Set(sessions.map((x) => x._id))), settings: cleanSettings(req.body?.settings) }));
+  const items = cleanItems(req.body?.items, new Set(sessions.map((x) => x._id)));
+  const ids = (list) => new Set(list.map((x) => String(x._id)).filter(Boolean));
+  const triggerMap = req.body?.triggerMap ? cleanTriggerMap(req.body.triggerMap, ids(items), ids(sessions)) : undefined;
+  res.json(await Schedule.create({ name, sessions, items, ...(triggerMap ? { triggerMap } : {}), settings: cleanSettings(req.body?.settings) }));
 }
 
 export async function updateSchedule(req, res) {
@@ -268,10 +306,17 @@ export async function updateSchedule(req, res) {
     update.name = str(req.body.name, 80).trim();
     if (!update.name) throw bad('Give the schedule a name.');
   }
+  const touchesLists = ['items', 'sessions', 'triggerMap'].some((k) => req.body?.[k] !== undefined);
+  const existing = touchesLists ? await Schedule.findById(req.params.id).select('items sessions triggerMap').lean() : null;
+  if (touchesLists && !existing) throw bad('Schedule not found.', 404);
   if (req.body?.sessions !== undefined) update.sessions = cleanSessions(req.body.sessions);
-  if (req.body?.items !== undefined) {
-    const ids = new Set((update.sessions ?? (await Schedule.findById(req.params.id).select('sessions').lean())?.sessions ?? []).map((x) => String(x._id)));
-    update.items = cleanItems(req.body.items, ids);
+  const sessionList = update.sessions ?? existing?.sessions ?? [];
+  const sessionIds = new Set(sessionList.map((x) => String(x._id)));
+  if (req.body?.items !== undefined) update.items = cleanItems(req.body.items, sessionIds);
+  if (touchesLists) {
+    const itemIds = new Set((update.items ?? existing.items ?? []).map((x) => String(x._id)));
+    // Re-cleaned every time items, sessions or the map change, so links to removed things never linger.
+    update.triggerMap = cleanTriggerMap(req.body.triggerMap ?? existing.triggerMap, itemIds, sessionIds);
   }
   if (req.body?.settings !== undefined) update.settings = cleanSettings(req.body.settings);
   const doc = await Schedule.findByIdAndUpdate(req.params.id, update, { new: true });

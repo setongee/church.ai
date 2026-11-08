@@ -11,11 +11,15 @@ import {
   type Schedule,
   type ScheduleItem,
   type ScheduleItemInput,
+  type ScheduleSession,
+  type TriggerMap,
   type ScheduleSettings,
   type ScheduleSummary,
 } from "./present";
 
 const SAVE_DELAY = 500;
+// Links that start or end at something that has been removed go with it.
+const pruneMap = (m: TriggerMap | undefined, gone: string): TriggerMap | undefined => (m ? { ...m, links: m.links.filter((l) => l.from !== gone && l.to !== gone) } : m);
 // The session id if the schedule still has it, else "" (no session).
 const s0 = (s: Schedule | null, id: string) => (id && s?.sessions?.some((x) => x._id === id) ? id : "");
 
@@ -51,7 +55,7 @@ export function useSchedules({ startId, current, apply, onActive, onGone }: Opti
     const s = activeRef.current;
     if (!s) return;
     try {
-      await updateSchedule(s._id, { name: s.name, items: s.items, sessions: s.sessions ?? [], settings: s.settings });
+      await updateSchedule(s._id, { name: s.name, items: s.items, sessions: s.sessions ?? [], triggerMap: s.triggerMap, settings: s.settings });
     } catch (e) {
       fail(e);
     }
@@ -110,7 +114,8 @@ export function useSchedules({ startId, current, apply, onActive, onGone }: Opti
     },
     [mutate],
   );
-  const removeItem = useCallback((id: string) => mutate((s) => ({ ...s, items: s.items.filter((i) => i._id !== id) })), [mutate]);
+  const removeItem = useCallback((id: string) => mutate((s) => ({ ...s, items: s.items.filter((i) => i._id !== id), triggerMap: pruneMap(s.triggerMap, id) })), [mutate]);
+  const saveTriggerMap = useCallback((triggerMap: TriggerMap) => mutate((s) => ({ ...s, triggerMap })), [mutate]);
   const moveItem = useCallback(
     (from: number, to: number) =>
       mutate((s) => {
@@ -122,18 +127,31 @@ export function useSchedules({ startId, current, apply, onActive, onGone }: Opti
     [mutate],
   );
   const addSession = useCallback(
-    (name: string) => {
-      const n = name.trim().slice(0, 60);
-      if (!n) return;
-      const id = newId();
-      mutate((s) => ({ ...s, sessions: [...(s.sessions ?? []), { _id: id, name: n }] }));
+    (input: { name: string; description?: string; color?: string }) => {
+      const name = input.name.trim().slice(0, 60);
+      if (!name) return;
+      mutate((s) => ({ ...s, sessions: [...(s.sessions ?? []), { _id: newId(), name, description: (input.description ?? "").trim().slice(0, 300), color: input.color ?? "" }] }));
     },
     [mutate],
   );
-  const renameSession = useCallback((id: string, name: string) => name.trim() && mutate((s) => ({ ...s, sessions: (s.sessions ?? []).map((x) => (x._id === id ? { ...x, name: name.trim().slice(0, 60) } : x)) })), [mutate]);
+  const updateSession = useCallback(
+    (id: string, patch: Partial<Pick<ScheduleSession, "name" | "description" | "color">>) =>
+      mutate((s) => ({ ...s, sessions: (s.sessions ?? []).map((x) => (x._id === id ? { ...x, ...patch, name: (patch.name ?? x.name).trim().slice(0, 60) || x.name, description: (patch.description ?? x.description ?? "").slice(0, 300) } : x)) })),
+    [mutate],
+  );
+  const moveSession = useCallback(
+    (from: number, to: number) =>
+      mutate((s) => {
+        const list = [...(s.sessions ?? [])];
+        if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return s;
+        list.splice(to, 0, list.splice(from, 1)[0]);
+        return { ...s, sessions: list };
+      }),
+    [mutate],
+  );
   // Deleting a session keeps its items (they just stop being in one), unless `withItems`.
   const removeSession = useCallback(
-    (id: string, withItems = false) => mutate((s) => ({ ...s, sessions: (s.sessions ?? []).filter((x) => x._id !== id), items: withItems ? s.items.filter((i) => i.session !== id) : s.items.map((i) => (i.session === id ? { ...i, session: "" } : i)) })),
+    (id: string, withItems = false) => mutate((s) => ({ ...s, sessions: (s.sessions ?? []).filter((x) => x._id !== id), items: withItems ? s.items.filter((i) => i.session !== id) : s.items.map((i) => (i.session === id ? { ...i, session: "" } : i)), triggerMap: pruneMap(s.triggerMap, id) })),
     [mutate],
   );
   const assignItem = useCallback((itemId: string, session: string) => mutate((s) => ({ ...s, items: s.items.map((i) => (i._id === itemId ? { ...i, session } : i)) })), [mutate]);
@@ -170,8 +188,9 @@ export function useSchedules({ startId, current, apply, onActive, onGone }: Opti
         await flush();
         const s = await createSchedule({
           name,
-          items: from?.items.map((i) => ({ type: i.type, title: i.title, subtitle: i.subtitle, slides: i.slides, show: i.show, scene: i.scene, session: i.session })),
+          items: from?.items.map((i) => ({ type: i.type, title: i.title, subtitle: i.subtitle, slides: i.slides, show: i.show, scene: i.scene, session: i.session, _id: i._id })),
           sessions: from?.sessions,
+          triggerMap: from?.triggerMap,
           settings: from?.settings ?? cb.current.current(),
         });
         setList((l) => [...l, { _id: s._id, name: s.name, count: s.items.length }]);
@@ -203,5 +222,5 @@ export function useSchedules({ startId, current, apply, onActive, onGone }: Opti
     }
   }, []);
 
-  return { list, active, error, addSession, renameSession, removeSession, assignItem, clearError: () => setError(""), addItem, removeItem, moveItem, saveSettings, rename, switchTo, create, duplicate, removeActive };
+  return { list, active, error, saveTriggerMap, addSession, updateSession, moveSession, removeSession, assignItem, clearError: () => setError(""), addItem, removeItem, moveItem, saveSettings, rename, switchTo, create, duplicate, removeActive };
 }

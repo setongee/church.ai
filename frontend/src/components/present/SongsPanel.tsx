@@ -34,7 +34,7 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
   const [q, setQ] = useState("");
   const [activeId, setActiveId] = useState("");
   const [slideIdx, setSlideIdx] = useState(-1);
-  const [editing, setEditing] = useState<{ id?: string; draft: Draft } | null>(null);
+  const [editing, setEditing] = useState<{ id?: string; draft: Draft; tab?: "lyrics" | "prefs" } | null>(null);
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
   const [finding, setFinding] = useState(false);
@@ -421,7 +421,19 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
                 <input value={editing.draft.author} onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, author: e.target.value } })} className={inputCls} />
               </Field>
             </div>
-            <div>
+            <div className="flex gap-1 self-start rounded-xl bg-neutral-100 p-1" role="tablist" aria-label="Song editor">
+              {(
+                [
+                  ["lyrics", "Lyrics"],
+                  ["prefs", "Preferences"],
+                ] as const
+              ).map(([id, label]) => (
+                <button key={id} type="button" role="tab" aria-selected={(editing.tab ?? "lyrics") === id} data-no-guard onClick={() => setEditing({ ...editing, tab: id })} className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${(editing.tab ?? "lyrics") === id ? "bg-white text-orange-700 shadow-sm" : "text-neutral-500 hover:text-neutral-800"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className={(editing.tab ?? "lyrics") === "lyrics" ? "" : "hidden"}>
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <button type="button" onClick={toggleTranslation} title="Select lines (or put the cursor on one), then click: wraps them in ( ) so they show as a smaller translation" className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-orange-300 hover:text-orange-700">
                   <Parentheses size={14} /> Mark as translation
@@ -430,7 +442,7 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
                   {tr?.busy ? <Loader2 size={14} className="animate-spin" /> : <Languages size={14} />}
                   {tr?.busy ? "Translating…" : "AI: translate foreign words"}
                 </button>
-                <span className="text-xs text-neutral-400">A line in (brackets) is a translation: shown smaller, in the look below.</span>
+                <span className="text-xs text-neutral-400">A line in (brackets) is a translation. Change how it looks in Preferences.</span>
               </div>
               {tr?.error && <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{tr.error}</p>}
               {tr && !tr.busy && !tr.error && (
@@ -464,8 +476,9 @@ export function SongsPanel({ onStage, onLive, onAdd, liveSlide, category = "song
               />
               </Field>
             </div>
-            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3" data-no-guard>
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Translation look</div>
+            <div className={`rounded-xl border border-neutral-200 bg-neutral-50 p-3 ${(editing.tab ?? "lyrics") === "prefs" ? "" : "hidden"}`} data-no-guard>
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Translation look</div>
+              <p className="mb-3 text-xs text-neutral-400">How the (bracketed) translation lines appear on screen under each lyric line.</p>
               <div className="grid gap-3 sm:grid-cols-[1fr_14rem]">
                 <div className="space-y-3 text-sm">
                   <label className="flex items-center gap-3">

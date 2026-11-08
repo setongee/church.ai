@@ -811,7 +811,15 @@ export interface ScheduleItem {
 export interface ScheduleSession {
   _id: string;
   name: string;
+  description?: string;
+  color?: string; // #rrggbb; none = the next colour from SESSION_COLORS
 }
+// Sessions are colour-coded: each takes the next colour in turn unless it has one of its own.
+export const SESSION_COLORS = ["#ea580c", "#2563eb", "#059669", "#9333ea", "#db2777", "#ca8a04", "#0891b2", "#dc2626"];
+export const sessionColor = (sessions: ScheduleSession[] | undefined, id: string | undefined) => {
+  const i = (sessions ?? []).findIndex((x) => x._id === id);
+  return i < 0 ? "" : (sessions![i].color || SESSION_COLORS[i % SESSION_COLORS.length]);
+};
 export type ScheduleItemInput = Omit<ScheduleItem, "_id">;
 
 // How the screen looks while a schedule is active.
@@ -833,11 +841,30 @@ export interface ScheduleSummary {
   lastUsedAt?: string | null;
   updatedAt?: string;
 }
+// The trigger map: "when this is clicked / goes live, do that". A source is an item or a whole session; a target is another
+// item (a template item applies its scene, anything else goes live) or an action node (a background change, or a screen).
+export type TriggerEvent = "stage" | "live"; // stage = when it is clicked, live = when it goes live
+export type TriggerNode = { id: string; kind: "background"; background: Background } | { id: string; kind: "screen"; mode: "black" | "clear" | "logo" };
+export interface TriggerLink {
+  id: string;
+  from: string;
+  to: string;
+  on: TriggerEvent;
+  delay: number; // seconds
+}
+export interface TriggerMap {
+  nodes: TriggerNode[];
+  links: TriggerLink[];
+  pos: Record<string, { x: number; y: number }>;
+}
+export const EMPTY_TRIGGER_MAP: TriggerMap = { nodes: [], links: [], pos: {} };
+
 export interface Schedule {
   _id: string;
   name: string;
   items: ScheduleItem[];
   sessions?: ScheduleSession[];
+  triggerMap?: TriggerMap;
   settings: ScheduleSettings;
 }
 
@@ -855,9 +882,9 @@ export const endPresentSession = () => req<{ session: null }>("/session", { meth
 
 export const listSchedules = () => req<ScheduleSummary[]>("/schedules");
 export const getSchedule = (id: string) => req<Schedule>(`/schedules/${id}`).then((s) => ({ ...s, items: s.items.map((it) => (it.type === "prayer" ? { ...it, slides: it.slides.map(asPrayerSlide) } : it)) }));
-export const createSchedule = (input: { name: string; items?: ScheduleItem[] | ScheduleItemInput[]; sessions?: ScheduleSession[]; settings?: ScheduleSettings }) =>
+export const createSchedule = (input: { name: string; items?: ScheduleItem[] | ScheduleItemInput[]; sessions?: ScheduleSession[]; triggerMap?: TriggerMap; settings?: ScheduleSettings }) =>
   req<Schedule>("/schedules", { method: "POST", body: JSON.stringify(input) });
-export const updateSchedule = (id: string, input: Partial<Pick<Schedule, "name" | "items" | "sessions" | "settings">>) =>
+export const updateSchedule = (id: string, input: Partial<Pick<Schedule, "name" | "items" | "sessions" | "triggerMap" | "settings">>) =>
   req<Schedule>(`/schedules/${id}`, { method: "PUT", body: JSON.stringify(input) });
 export const deleteSchedule = (id: string) => req<{ ok: boolean }>(`/schedules/${id}`, { method: "DELETE" });
 

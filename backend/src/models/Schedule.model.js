@@ -16,7 +16,7 @@ const itemSchema = new mongoose.Schema({
 });
 
 // A session is a sub-schedule: a named group of items inside a schedule.
-const sessionSchema = new mongoose.Schema({ name: { type: String, required: true, trim: true } });
+const sessionSchema = new mongoose.Schema({ name: { type: String, required: true, trim: true }, description: { type: String, default: '' }, color: { type: String, default: '' } });
 
 // A named run-of-service. `settings` is the look of the screen while this schedule is active
 // ({ background, style: { align, scale, font, weight } }).
@@ -25,6 +25,8 @@ const scheduleSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     items: { type: [itemSchema], default: [] },
     sessions: { type: [sessionSchema], default: [] },
+    // The trigger map: links from items/sessions to templates, background changes and screen actions ({ nodes, links, pos }).
+    triggerMap: { type: mongoose.Schema.Types.Mixed, default: undefined },
     settings: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
   { timestamps: true, minimize: false }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlignCenter, AlignLeft, BellRing, BookOpen, CalendarDays, ChevronLeft, ChevronRight, Columns2, MessageSquare, TriangleAlert, Eraser, Film, HandHeart, Megaphone, Moon, Music2, Palette, Pause, Play, Power, PowerOff, RefreshCw, Quote as QuoteIcon, LayoutTemplate, RotateCcw, Sparkles, SkipBack, SkipForward, Square, Volume2, VolumeX } from "lucide-react";
 import { getBrand } from "@/lib/api";
@@ -10,7 +10,7 @@ import { Spinner } from "@/components/editor/ui";
 import { ScheduleLanding } from "@/components/present/ScheduleLanding";
 import { getSocket } from "@/lib/socket";
 import { useSchedules } from "@/lib/useSchedules";
-import { endPresentSession, FRAME_PRESETS, getPresentSession, listBibles, listSceneTemplates, listWrappers, lookOfScene, wrapperPatch, type SceneTemplate, type Wrapper, playShow, showCommand, switchPresentSession, usePresentState, type Background, type BibleMeta, type PresentPatch, type PresentSession, type PresentState, type PresentStyle, type TemplateScene, type ScheduleItem, type ScriptureBatch, type ScheduleItemInput, type ScheduleSettings, type Slide } from "@/lib/present";
+import { endPresentSession, FRAME_PRESETS, getPresentSession, listBibles, listSceneTemplates, listWrappers, lookOfScene, wrapperPatch, type SceneTemplate, type Wrapper, playShow, sessionColor, showCommand, switchPresentSession, usePresentState, type Background, type TriggerEvent, type BibleMeta, type PresentPatch, type PresentSession, type PresentState, type PresentStyle, type TemplateScene, type ScheduleItem, type ScriptureBatch, type ScheduleItemInput, type ScheduleSettings, type Slide } from "@/lib/present";
 import { FontPicker } from "@/components/editor/FontPicker";
 import { FrameEditor } from "@/components/present/FrameEditor";
 import { Stage } from "@/components/present/Stage";
@@ -27,6 +27,7 @@ import { ScripturePanel } from "@/components/present/ScripturePanel";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { useChat } from "@/components/chat/ChatProvider";
 import { Modal } from "@/components/present/ui";
+import { TriggerMapEditor } from "@/components/present/TriggerMap";
 import { FontSizeControl } from "@/components/present/FontSizeControl";
 import { BatchCard, BatchModal, batchIndex } from "@/components/present/BatchCard";
 import { SplitPanel } from "@/components/present/SplitPanel";
@@ -239,7 +240,7 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
   // taken off again when something else without a look goes live. Held in refs so going live never goes stale.
   const sceneFns = useRef<{ apply: (s: TemplateScene) => void; clear: () => void; on: () => boolean }>({ apply: () => {}, clear: () => {}, on: () => false });
   const sceneByPrayer = useRef(false);
-  const goLive = useCallback(
+  const goLiveRaw = useCallback(
     (s?: Slide | null) => {
       const slide = s ?? staged;
       if (!slide) return;
@@ -254,6 +255,20 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
       patch({ mode: "live", slide });
     },
     [staged, patch],
+  );
+  // Trigger map: items (or whole sessions) linked to a template, a background change, another item or a screen action. Whatever
+  // goes live from the schedule - by double-click, Enter or Go live - fires its "goes live" links; clicking an item fires
+  // its "clicked" links. Both run from the latest render (so a delayed trigger never acts on stale state).
+  const fireRef = useRef<(itemId: string, event: TriggerEvent) => void>(() => {});
+  const runRef = useRef<(targetId: string) => void>(() => {});
+  const goLive = useCallback(
+    (s?: Slide | null) => {
+      goLiveRaw(s);
+      const slide = s ?? staged;
+      const it = slide ? schedules.active?.items.find((i) => i.slides.includes(slide)) : undefined;
+      if (it) fireRef.current(it._id, "live");
+    },
+    [goLiveRaw, staged, schedules.active],
   );
   // Move through the batch (lowest verse -> highest); every move goes straight to the live screen.
   const stepBatch = useCallback(
@@ -384,6 +399,46 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
       setTimeout(() => setToast(""), 2000);
     } else if (it.slides[0]) goLive(it.slides[0]);
   }
+  const triggerTemplateFromSchedule = (it: ScheduleItem) => {
+    triggerTemplate(it);
+    fireRef.current(it._id, "live");
+  };
+  const playShowFromSchedule = (it: ScheduleItem) => {
+    playShow(it.slides, { seconds: it.show?.seconds ?? 8, loop: it.show?.loop ?? false, name: it.title });
+    fireRef.current(it._id, "live");
+  };
+  useEffect(() => {
+    fireRef.current = (itemId, event) => {
+      const sch = schedules.active;
+      const item = sch?.items.find((i) => i._id === itemId);
+      if (!sch?.triggerMap || !item) return;
+      for (const l of sch.triggerMap.links) {
+        if (l.on !== event || (l.from !== itemId && l.from !== item.session)) continue;
+        if (l.delay > 0) setTimeout(() => runRef.current(l.to), l.delay * 1000);
+        else runRef.current(l.to);
+      }
+    };
+    runRef.current = (id) => {
+      const sch = schedules.active;
+      const target = sch?.items.find((i) => i._id === id);
+      if (target) {
+        if (target.type === "template") triggerTemplate(target);
+        else if (target.type === "slideshow") playShow(target.slides, { seconds: target.show?.seconds ?? 8, loop: target.show?.loop ?? false, name: target.title });
+        else if (target.slides[0]) goLiveRaw(target.slides[0]);
+        return;
+      }
+      const node = sch?.triggerMap?.nodes.find((n) => n.id === id);
+      if (node?.kind === "background") changeLook({ background: node.background });
+      else if (node?.kind === "screen") patch({ mode: node.mode });
+    };
+  });
+  const [mapOpen, setMapOpen] = useState(false);
+  const triggerCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const l of schedules.active?.triggerMap?.links ?? []) c[l.from] = (c[l.from] ?? 0) + 1;
+    return c;
+  }, [schedules.active?.triggerMap]);
+
   // Takes a template scene off again: the screen goes back to how it was (background, text layout).
   function clearScene() {
     const before = sceneBefore.current;
@@ -556,7 +611,7 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
             ))}
           </div>
           <div className="min-h-0 flex-1 bg-neutral-50/40 p-3 sm:p-4">
-            {tab === "schedule" && <SchedulePanel schedule={schedules.active} onStage={stage} onLive={goLive} onTrigger={triggerTemplate} onMove={schedules.moveItem} onRemove={schedules.removeItem} onAddSession={schedules.addSession} onRenameSession={schedules.renameSession} onRemoveSession={schedules.removeSession} onAssign={schedules.assignItem} onPlayShow={(it) => playShow(it.slides, { seconds: it.show?.seconds ?? 8, loop: it.show?.loop ?? false, name: it.title })} />}
+            {tab === "schedule" && <SchedulePanel schedule={schedules.active} onStage={stage} onLive={goLive} onTrigger={triggerTemplateFromSchedule} onMove={schedules.moveItem} onRemove={schedules.removeItem} onAddSession={schedules.addSession} onUpdateSession={schedules.updateSession} onMoveSession={schedules.moveSession} onRemoveSession={schedules.removeSession} onAssign={schedules.assignItem} onPick={(it) => fireRef.current(it._id, "stage")} triggerCounts={triggerCounts} onOpenMap={() => setMapOpen(true)} onPlayShow={playShowFromSchedule} />}
             {tab === "scripture" && <ScripturePanel bibles={bibles} versionId={versionId} setVersionId={chooseVersion} onManage={user?.isAdmin ? () => setManaging(true) : undefined} onStage={stage} onLive={goLive} onAdd={addToSchedule} onBatch={setBatch} pointsSplitOn={Boolean(state.split?.on)} onPointsSplitOff={() => state.split && patch({ split: { ...state.split, on: false } })} liveReference={state.mode === "live" ? (state.slide?.kind === "scripture" ? state.slide.reference : state.slide?.kind === "scripture2" ? state.slide.left.reference : undefined) : undefined} />}
             {tab === "split" && <SplitPanel deck={state.split} patch={patch} liveSlide={state.mode === "live" ? state.slide : null} />}
             {tab === "songs" && <SongsTab onStage={stage} onLive={goLive} onAdd={addToSchedule} liveSlide={state.mode === "live" ? state.slide : null} />}
@@ -753,11 +808,12 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
         </div>
       )}
 
+      {mapOpen && schedules.active && <TriggerMapEditor schedule={schedules.active} onChange={schedules.saveTriggerMap} onClose={() => setMapOpen(false)} />}
       {pendingAdd && (
         <Modal title="Add to which session?" onClose={() => setPendingAdd(null)}>
           <p className="mb-3 truncate text-sm text-neutral-500">“{pendingAdd.title}”</p>
           <div className="space-y-2">
-            {[{ _id: "", name: "No session" }, ...(schedules.active?.sessions ?? [])].map((x) => (
+            {[{ _id: "", name: "No session", description: "" }, ...(schedules.active?.sessions ?? [])].map((x) => (
               <button
                 key={x._id || "none"}
                 autoFocus={!x._id}
@@ -767,8 +823,14 @@ function PresentController({ session, onEnded }: { session: PresentSession; onEn
                 }}
                 className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm font-semibold transition hover:border-orange-300 hover:bg-orange-50 ${x._id ? "border-neutral-200 text-neutral-900" : "border-dashed border-neutral-300 text-neutral-600"}`}
               >
-                {x.name}
-                {x._id && <span className="text-xs font-medium text-neutral-400">{schedules.active?.items.filter((i) => i.session === x._id).length} items</span>}
+                <span className="flex min-w-0 items-center gap-2.5">
+                  {x._id && <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: sessionColor(schedules.active?.sessions, x._id) }} />}
+                  <span className="min-w-0">
+                    <span className="block truncate">{x.name}</span>
+                    {x.description && <span className="block truncate text-xs font-normal text-neutral-400">{x.description}</span>}
+                  </span>
+                </span>
+                {x._id && <span className="shrink-0 text-xs font-medium text-neutral-400">{schedules.active?.items.filter((i) => i.session === x._id).length} items</span>}
               </button>
             ))}
           </div>
